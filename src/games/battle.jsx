@@ -1,19 +1,13 @@
-// ⑩ 밸런스 배틀 — 질문은 'A(입력) vs B(입력)' 구조. 참가자가 질문을 제안하면 큐에 쌓이고 호스트가 하나 선택.
-// 진행자가 '소수파 벌칙 / 다수파 벌칙'을 사전 선택 → 공개 시 대상 진영을 고른 사람이 가장 많은 팀을 지목.
+// 밸런스 배틀 — 'A vs B' 소신 투표. 다수/소수 중 누가 벌칙인지는 공개 순간 시스템이 랜덤 결정.
+// 참가자는 눈치보지 말고 소신대로 고르고, 결과는 운(시스템)에 맡긴다. 대상 진영 최다 팀이 벌칙.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useValue, dbSet, dbPush, toList } from '../lib/db'
-import ModeTabs from '../components/ModeTabs'
 import { Button } from '../components/ui'
 
-const MODES = [
-  { id: 'minority', label: '소수파 벌칙', emoji: '🎯' },
-  { id: 'majority', label: '다수파 벌칙', emoji: '👥' },
-]
 const PAIRS = [
   ['부먹', '찍먹'], ['민초', '반민초'], ['평생 여름', '평생 겨울'],
   ['돈 많은 백수', '바쁜 부자'], ['매일 연락', '가끔 연락'], ['치킨', '피자'],
   ['산', '바다'], ['아침형', '저녁형'], ['과거로 가기', '미래 보기'],
-  // 어렵고 재밌는 딜레마
   ['평생 돈 걱정 없기', '평생 사랑 안 식기'],
   ['외모 +50% 지능 -20%', '지능 +50% 외모 -20%'],
   ['모두가 내 마음 읽기', '내가 모두 마음 읽기'],
@@ -30,7 +24,6 @@ const PAIRS = [
   ['평생 한 음식만', '평생 같은 옷만'],
 ]
 
-// 19금 밸런스 (수위 높음 · 재밌게)
 const ADULT_PAIRS = [
   ['원나잇 100번', '평생 한 사람만'],
   ['목소리 야한 사람', '몸매 좋은 사람'],
@@ -49,75 +42,58 @@ const ADULT_PAIRS = [
 ]
 
 function HostView({ base, meta, players, teams }) {
-  const mode = useValue(`${base}/mode`) || 'minority'
   const q = useValue(`${base}/q`)
+  const verdict = useValue(`${base}/verdict`) // 'minority' | 'majority' — 공개 순간 랜덤 확정
   const suggestions = toList(useValue(`${base}/suggestions`))
   const raw = useValue(`${base}/choice`)
   const reveal = meta.roundStatus === 'reveal'
   const staged = meta.roundStatus === 'staged'
 
-  // 질문 편집 로컬 상태 (q 에서 1회 시드)
   const [ea, setEa] = useState('')
   const [eb, setEb] = useState('')
   const seeded = useRef(false)
   useEffect(() => {
-    if (!seeded.current && q) {
-      setEa(q.a || '')
-      setEb(q.b || '')
-      seeded.current = true
-    }
+    if (!seeded.current && q) { setEa(q.a || ''); setEb(q.b || ''); seeded.current = true }
   }, [q])
   const writeA = (v) => { setEa(v); dbSet(`${base}/q`, { a: v, b: eb }) }
   const writeB = (v) => { setEb(v); dbSet(`${base}/q`, { a: ea, b: v }) }
   const pick = (a, b) => { setEa(a); setEb(b); dbSet(`${base}/q`, { a, b }) }
   const rollFrom = (arr) => { const [a, b] = arr[Math.floor(Math.random() * arr.length)]; pick(a, b) }
 
-  const modeLabel = mode === 'minority' ? '소수파' : '다수파'
-  const { a, b, target, byTeam, topN, answered } = useMemo(() => {
+  const { a, b, answered, choice, byId } = useMemo(() => {
     const byId = Object.fromEntries(players.map((p) => [p.id, p]))
     const choice = Object.fromEntries(toList(raw).map((c) => [c.id, c.value]))
-    let a = 0
-    let b = 0
-    Object.values(choice).forEach((v) => {
-      if (v === 'A') a++
-      else if (v === 'B') b++
-    })
-    let target = null
-    if (a !== b && (a > 0 || b > 0)) {
-      const fewer = a < b ? 'A' : 'B'
-      const more = a > b ? 'A' : 'B'
-      target = mode === 'minority' ? fewer : more
-    }
+    let a = 0, b = 0
+    Object.values(choice).forEach((v) => { if (v === 'A') a++; else if (v === 'B') b++ })
+    return { a, b, answered: a + b, choice, byId }
+  }, [raw, players])
+
+  // 공개 순간, 아직 안 정해졌으면 다수/소수 랜덤 결정 (호스트가 1회 기록 → 모두 공유)
+  useEffect(() => {
+    if (reveal && !verdict) dbSet(`${base}/verdict`, Math.random() < 0.5 ? 'minority' : 'majority')
+  }, [reveal, verdict, base])
+
+  const verdictLabel = verdict === 'minority' ? '소수' : verdict === 'majority' ? '다수' : ''
+  const target = !verdict || a === b || answered === 0 ? null : verdict === 'minority' ? (a < b ? 'A' : 'B') : (a > b ? 'A' : 'B')
+
+  const { byTeam, topN } = useMemo(() => {
     const byTeam = {}
-    if (target) {
-      Object.entries(choice).forEach(([pid, v]) => {
-        if (v === target) {
-          const tid = byId[pid]?.teamId
-          if (tid) byTeam[tid] = (byTeam[tid] || 0) + 1
-        }
-      })
-    }
+    if (target) Object.entries(choice).forEach(([pid, v]) => {
+      if (v === target) { const tid = byId[pid]?.teamId; if (tid) byTeam[tid] = (byTeam[tid] || 0) + 1 }
+    })
     const topN = Math.max(0, ...teams.map((t) => byTeam[t.id] || 0))
-    return { a, b, target, byTeam, topN, answered: a + b }
-  }, [raw, players, teams, mode])
+    return { byTeam, topN }
+  }, [target, choice, byId, teams])
 
   return (
     <div className="text-center">
-      {staged && (
-        <div className="mb-4">
-          <ModeTabs modes={MODES} value={mode} onChange={(m) => dbSet(`${base}/mode`, m)} />
-        </div>
-      )}
-
-      {/* 현재 질문 */}
       <div className="font-display text-2xl">
         {q?.a || q?.b ? <>{q.a || '?'} <span style={{ color: 'var(--ink-soft)' }}>vs</span> {q.b || '?'}</> : <span style={{ color: 'var(--ink-soft)' }}>질문을 정하세요</span>}
       </div>
       <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>
-        {modeLabel} 벌칙 · {answered}/{players.length} 응답 {reveal ? '· 공개' : staged ? '· 대기' : '· 비밀'}
+        {answered}/{players.length} 응답 {reveal ? '· 공개' : staged ? '· 대기' : '· 소신껏! 벌칙은 공개 때 랜덤 🎲'}
       </div>
 
-      {/* 질문 편집 + 참가자 제안 큐 (대기 중에만) */}
       {staged && (
         <div className="mt-4 max-w-lg mx-auto text-left">
           <div className="space-y-2">
@@ -149,14 +125,15 @@ function HostView({ base, meta, players, teams }) {
 
       {reveal && (
         <>
-          <div className="mt-4 flex items-center justify-center gap-6 font-display text-4xl">
+          {verdict && <div className="mt-4 font-display text-3xl animate-pop" style={{ color: 'var(--c-coral)' }}>🎲 운명의 선택: {verdictLabel}파 벌칙!</div>}
+          <div className="mt-3 flex items-center justify-center gap-6 font-display text-4xl">
             <span style={{ color: target === 'A' ? 'var(--c-coral)' : 'var(--c-sky)' }}>{q?.a || 'A'} {a}</span>
             <span style={{ color: 'var(--ink-soft)' }}>vs</span>
             <span style={{ color: target === 'B' ? 'var(--c-coral)' : 'var(--c-pink)' }}>{q?.b || 'B'} {b}</span>
           </div>
           {target ? (
             <>
-              <p className="mt-2 font-bold" style={{ color: 'var(--c-coral)' }}>{modeLabel}는 <b>{target === 'A' ? q?.a || 'A' : q?.b || 'B'}</b> · {modeLabel}가 가장 많은 팀이 벌칙! 🍺</p>
+              <p className="mt-2 font-bold" style={{ color: 'var(--c-coral)' }}>{verdictLabel}파는 <b>{target === 'A' ? q?.a || 'A' : q?.b || 'B'}</b> · 이걸 고른 사람 최다 팀이 벌칙! 🍺</p>
               <div className="mt-3 grid gap-3 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
                 {teams.map((t) => {
                   const n = byTeam[t.id] || 0
@@ -165,25 +142,24 @@ function HostView({ base, meta, players, teams }) {
                     <div key={t.id} className="clay p-3" style={{ background: top ? 'var(--c-coral)' : 'var(--surface)', color: top ? '#fff' : 'var(--ink)' }}>
                       <div className="font-display" style={{ color: top ? '#fff' : t.color }}>{t.name}</div>
                       <div className="font-display text-4xl mt-1">{n}명</div>
-                      {top && <div className="mt-1 font-bold">🍺 최다 {modeLabel}!</div>}
+                      {top && <div className="mt-1 font-bold">🍺 벌칙!</div>}
                     </div>
                   )
                 })}
               </div>
             </>
           ) : (
-            <p className="mt-4 font-display text-2xl" style={{ color: 'var(--ink-soft)' }}>동수! {modeLabel} 없음 🤝</p>
+            verdict && <p className="mt-4 font-display text-2xl" style={{ color: 'var(--ink-soft)' }}>동수! 벌칙 없음 🤝</p>
           )}
         </>
       )}
 
-      {meta.roundStatus === 'open' && <p className="mt-6" style={{ color: 'var(--ink-soft)' }}>응답 수집 중… {modeLabel}를 피해라!</p>}
+      {meta.roundStatus === 'open' && <p className="mt-6" style={{ color: 'var(--ink-soft)' }}>응답 수집 중… 소신껏 골라! 다수·소수는 랜덤 🎲</p>}
     </div>
   )
 }
 
 function PlayerView({ base, meta, me }) {
-  const mode = useValue(`${base}/mode`) || 'minority'
   const q = useValue(`${base}/q`)
   const mine = useValue(`${base}/choice/${me.id}`)
   const open = meta.roundStatus === 'open'
@@ -196,28 +172,20 @@ function PlayerView({ base, meta, me }) {
   const propose = () => {
     if (!pa.trim() || !pb.trim()) return
     dbPush(`${base}/suggestions`, { a: pa.trim(), b: pb.trim(), by: me.nickname })
-    setPa('')
-    setPb('')
-    setSent(true)
-    setTimeout(() => setSent(false), 1500)
+    setPa(''); setPb(''); setSent(true); setTimeout(() => setSent(false), 1500)
   }
-
-  const banner =
-    mode === 'minority'
-      ? { text: '🎯 소수파가 벌칙! 다수파에 붙어라', color: 'var(--c-grape)' }
-      : { text: '👥 다수파가 벌칙! 소수파에 붙어라', color: 'var(--c-coral)' }
 
   return (
     <div className="text-center">
-      <div className="clay-inset px-3 py-2 mb-3 font-bold text-sm" style={{ color: banner.color }}>{banner.text}</div>
+      <div className="clay-inset px-3 py-2 mb-3 font-bold text-sm" style={{ color: 'var(--c-grape)' }}>🎲 소신껏 골라! 다수·소수 벌칙은 끝나고 랜덤 결정</div>
 
       {staged ? (
         <div>
           <p className="mb-3" style={{ color: 'var(--ink-soft)' }}>진행자가 질문 고르는 중… 질문을 제안해보세요!</p>
           <div className="flex gap-2 items-center">
-            <input value={pa} onChange={(e) => setPa(e.target.value)} placeholder="A" className="clay-inset flex-1 px-3 py-2 text-center" />
+            <input value={pa} onChange={(e) => setPa(e.target.value)} placeholder="A" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
             <span className="font-display" style={{ color: 'var(--ink-soft)' }}>vs</span>
-            <input value={pb} onChange={(e) => setPb(e.target.value)} placeholder="B" className="clay-inset flex-1 px-3 py-2 text-center" onKeyDown={(e) => e.key === 'Enter' && propose()} />
+            <input value={pb} onChange={(e) => setPb(e.target.value)} placeholder="B" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" onKeyDown={(e) => e.key === 'Enter' && propose()} />
           </div>
           <Button className="mt-2 w-full" onClick={propose} disabled={!pa.trim() || !pb.trim()}>{sent ? '제안됨 💡' : '질문 제안'}</Button>
         </div>
@@ -252,7 +220,7 @@ export default {
   id: 'battle',
   name: '밸런스 배틀',
   emoji: '⚖️',
-  tagline: '소수파 vs 다수파 · 질문 제안',
+  tagline: '소신 투표 · 다수/소수 랜덤 벌칙',
   genres: ['mind'],
   traits: ['solo'],
   HostView,

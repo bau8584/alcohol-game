@@ -1,4 +1,5 @@
 // 호스트 로비: 팀 개수·이름·색(과일 프리셋) 편집. (게임 시작 전에만 노출 권장)
+import { useState } from 'react'
 import { setTeamName, setTeamColor, addTeam, removeTeam } from '../lib/actions'
 import { TEAM_PALETTE } from '../config/teams'
 import { Card } from './ui'
@@ -7,14 +8,17 @@ const MAX_TEAMS = 8
 const MIN_TEAMS = 2
 
 export default function TeamSettings({ roomId, teams }) {
+  const [open, setOpen] = useState(false)
   return (
     <Card>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-display text-xl">🎨 팀 설정</h2>
-        <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>{teams.length}팀</span>
-      </div>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between">
+        <span className="font-display text-xl">🎨 팀 설정 <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>({teams.length}팀)</span></span>
+        <span style={{ color: 'var(--ink-soft)' }}>{open ? '▲ 접기' : '▼ 이름·색·팀추가'}</span>
+      </button>
 
-      <div className="space-y-3">
+      {open && (
+      <>
+      <div className="space-y-3 mt-3">
         {teams.map((t) => (
           <div key={t.id} className="clay-inset p-2.5">
             <div className="flex items-center gap-2">
@@ -65,6 +69,8 @@ export default function TeamSettings({ roomId, teams }) {
       >
         + 팀 추가
       </button>
+      </>
+      )}
     </Card>
   )
 }

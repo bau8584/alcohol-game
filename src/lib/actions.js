@@ -23,6 +23,8 @@ const seedTeams = () =>
 // ── 테스트 운영용 고정 방 ────────────────────────
 export const SB_ROOM_ID = 'SB'
 export const SB_HOST_PIN = '4321'
+// 개발용 시드(명단 29명)를 붓는 별도 테스트 방. 실전 SB 방 오염 방지용.
+export const SB_TEST_ROOM_ID = 'SBTEST'
 
 // 방 문서를 새로 씀 (id 지정)
 async function writeNewRoom(roomId, hostPin) {
@@ -89,24 +91,78 @@ export async function checkHostPin(roomId, pin) {
   return String(real) === String(pin)
 }
 
+// 닉네임 비교용 정규화: 앞뒤·중간 공백 제거 + 소문자 (표시는 원본 유지)
+const nickKey = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '')
+
+// 방 안에서 이미 쓰이는 닉네임인지 (본인 제외). 한 사람이 여러 닉으로 중복 입장하는 걸 막음.
+export async function isNicknameTaken(roomId, playerId, nickname) {
+  const players = await dbGet(roomPath(roomId, 'players'))
+  const key = nickKey(nickname)
+  return Object.entries(players || {}).some(
+    ([id, p]) => id !== playerId && p && nickKey(p.nickname) === key
+  )
+}
+
 // ── 참가자 입장 / 팀 선택 ────────────────────────
+// players 노드 트랜잭션으로 닉네임 중복을 원자적으로 차단. 중복이면 committed=false → 에러 throw.
 export async function joinRoom(roomId, playerId, nickname) {
-  const p = roomPath(roomId, `players/${playerId}`)
-  const existing = await dbGet(p)
-  await dbUpdate(p, {
-    nickname,
-    joinedAt: existing?.joinedAt || Date.now(),
-    connected: true,
-    teamId: existing?.teamId || null,
-    items: existing?.items || initialItems('personal'),
+  const name = (nickname || '').trim()
+  const key = nickKey(name)
+  const res = await dbTransaction(roomPath(roomId, 'players'), (players) => {
+    players = players || {}
+    const taken = Object.entries(players).some(
+      ([id, p]) => id !== playerId && p && nickKey(p.nickname) === key
+    )
+    if (taken) return // 트랜잭션 취소 → committed:false
+    const existing = players[playerId]
+    players[playerId] = {
+      ...(existing || {}),
+      nickname: name,
+      joinedAt: existing?.joinedAt || Date.now(),
+      connected: true,
+      teamId: existing?.teamId ?? null,
+      items: existing?.items || initialItems('personal'),
+    }
+    return players
   })
+  if (!res.committed) {
+    const err = new Error('이미 사용 중인 닉네임이에요.')
+    err.code = 'DUP_NICK'
+    throw err
+  }
 }
 
 export const setPlayerTeam = (roomId, playerId, teamId) =>
   dbUpdate(roomPath(roomId, `players/${playerId}`), { teamId })
 
+// 개발용 테스트 참가자로 표시 → clearSeeds/초기화가 함께 제거 (예: '테스터')
+export const markPlayerSeed = (roomId, playerId) =>
+  dbUpdate(roomPath(roomId, `players/${playerId}`), { seed: true })
+
+// ── 호스트: 참가자 닉네임 변경 (중복 차단, players 트랜잭션) ──
+export async function setPlayerNickname(roomId, playerId, nickname) {
+  const name = (nickname || '').trim()
+  if (!name) throw new Error('닉네임을 입력하세요.')
+  const key = nickKey(name)
+  const res = await dbTransaction(roomPath(roomId, 'players'), (players) => {
+    players = players || {}
+    if (!players[playerId]) return players // 없는 참가자는 그대로
+    const taken = Object.entries(players).some(
+      ([id, p]) => id !== playerId && p && nickKey(p.nickname) === key
+    )
+    if (taken) return // 중복 → 트랜잭션 취소
+    players[playerId] = { ...players[playerId], nickname: name }
+    return players
+  })
+  if (!res.committed) throw new Error('이미 쓰는 닉네임이에요.')
+}
+
 // ── 호스트: 참가자 강퇴 (레코드 삭제 → 그 사람 폰은 자동으로 입장 화면으로, 재입장 가능) ──
 export const kickPlayer = (roomId, playerId) =>
+  dbRemove(roomPath(roomId, `players/${playerId}`))
+
+// ── 참가자: 스스로 방에서 나가기 (내 레코드 삭제). 세션(localStorage) 정리는 호출측에서. ──
+export const leaveRoom = (roomId, playerId) =>
   dbRemove(roomPath(roomId, `players/${playerId}`))
 
 export const setConnected = (roomId, playerId, v) =>

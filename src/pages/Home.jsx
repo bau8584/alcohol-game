@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ensureFixedRoom, seedRoster, clearSeeds, joinRoom, setPlayerTeam, SB_ROOM_ID, SB_HOST_PIN } from '../lib/actions'
+import { ensureFixedRoom, seedRoster, clearSeeds, joinRoom, setPlayerTeam, markPlayerSeed, SB_ROOM_ID, SB_HOST_PIN, SB_TEST_ROOM_ID } from '../lib/actions'
 import { ensurePlayerId, saveSession } from '../lib/session'
 import { Button } from '../components/ui'
 import ThemeSwitcher from '../components/ThemeSwitcher'
@@ -40,14 +40,14 @@ export default function Home() {
     }
   }
 
-  // ── 개발용 테스트: 명단 시드 후 바로 입장 ──
+  // ── 개발용 테스트: 별도 테스트 방(SBTEST)에 명단 시드 후 입장 (실전 SB 방은 안 건드림) ──
   const testHost = async () => {
     setBusy(true)
     try {
-      await ensureFixedRoom()
-      await seedRoster(SB_ROOM_ID)
-      localStorage.setItem(`agw.host.${SB_ROOM_ID}`, '1')
-      nav(`/host/${SB_ROOM_ID}`)
+      await ensureFixedRoom(SB_TEST_ROOM_ID)
+      await seedRoster(SB_TEST_ROOM_ID)
+      localStorage.setItem(`agw.host.${SB_TEST_ROOM_ID}`, '1')
+      nav(`/host/${SB_TEST_ROOM_ID}`)
     } catch (e) {
       setErr('테스트 실패: ' + e.message)
       setBusy(false)
@@ -56,13 +56,14 @@ export default function Home() {
   const testPlayer = async () => {
     setBusy(true)
     try {
-      await ensureFixedRoom()
-      await seedRoster(SB_ROOM_ID)
+      await ensureFixedRoom(SB_TEST_ROOM_ID)
+      await seedRoster(SB_TEST_ROOM_ID)
       const pid = ensurePlayerId()
-      saveSession({ nickname: '테스터', roomId: SB_ROOM_ID })
-      await joinRoom(SB_ROOM_ID, pid, '테스터')
-      await setPlayerTeam(SB_ROOM_ID, pid, 'ski')
-      nav(`/play/${SB_ROOM_ID}`)
+      saveSession({ nickname: '테스터', roomId: SB_TEST_ROOM_ID })
+      await joinRoom(SB_TEST_ROOM_ID, pid, '테스터')
+      await setPlayerTeam(SB_TEST_ROOM_ID, pid, 'ski')
+      await markPlayerSeed(SB_TEST_ROOM_ID, pid) // 초기화/테스트 명단 지우기로 함께 제거되도록 표시
+      nav(`/play/${SB_TEST_ROOM_ID}`)
     } catch (e) {
       setErr('테스트 실패: ' + e.message)
       setBusy(false)

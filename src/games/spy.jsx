@@ -1,8 +1,14 @@
-// 스파이 — 팀별로 진행. 각 팀에서 다수는 진짜 제시어, 소수(스파이)는 가짜 제시어를 받음.
-// 팀마다 스파이 인원을 +/− 로 지정. 역할 배분 = 비밀 정보(웹 고유).
+// 스파이 — 팀전(팀별) / 개인전(방 전체) 선택. 다수는 진짜 제시어, 소수(스파이)는 가짜 제시어를 받음.
+// 역할 배분 = 비밀 정보(웹 고유).
 import { useEffect, useState } from 'react'
 import { useValue, dbSet } from '../lib/db'
+import ModeTabs from '../components/ModeTabs'
 import { Button } from '../components/ui'
+
+const MODES = [
+  { id: 'team', label: '팀전', emoji: '👥' },
+  { id: 'solo', label: '개인전', emoji: '🧍' },
+]
 
 // [시민(진짜) 제시어, 라이어(가짜) 제시어] — 순서 유지(왼쪽=시민, 오른쪽=라이어)
 const PAIRS = [
@@ -58,9 +64,12 @@ const shuffle = (arr) => {
 
 function HostView({ base, meta, players, teams }) {
   const assign = useValue(`${base}/assign`)
+  const mode = useValue(`${base}/mode`) || 'team'
   const [real, setReal] = useState('')
   const [fake, setFake] = useState('')
-  const [counts, setCounts] = useState({}) // 팀별 스파이 수
+  const [counts, setCounts] = useState({}) // 팀별 스파이 수 (팀전)
+  const [soloN, setSoloN] = useState(1) // 방 전체 스파이 수 (개인전)
+  const soloMax = Math.max(0, players.length - 1)
 
   useEffect(() => {
     if (assign) {
@@ -83,20 +92,33 @@ function HostView({ base, meta, players, teams }) {
     if (!players.length) return alert('참가자가 없습니다.')
     const spyIds = {}
     let assigned = 0
-    teams.forEach((t) => {
-      const n = Math.min(cnt(t.id), Math.max(0, t.members.length - 1))
-      shuffle(t.members).slice(0, n).forEach((p) => {
+    if (mode === 'solo') {
+      const n = Math.min(soloN, soloMax)
+      shuffle(players).slice(0, n).forEach((p) => {
         spyIds[p.id] = true
         assigned++
       })
-    })
+    } else {
+      teams.forEach((t) => {
+        const n = Math.min(cnt(t.id), Math.max(0, t.members.length - 1))
+        shuffle(t.members).slice(0, n).forEach((p) => {
+          spyIds[p.id] = true
+          assigned++
+        })
+      })
+    }
     if (assigned === 0) return alert('스파이 인원을 1명 이상 지정하세요.')
-    dbSet(`${base}/assign`, { realWord: real.trim(), fakeWord: fake.trim(), spyIds })
+    dbSet(`${base}/assign`, { realWord: real.trim(), fakeWord: fake.trim(), spyIds, mode })
   }
   const reveal = meta.roundStatus === 'reveal'
 
   return (
     <div className="text-center">
+      {!assign && (
+        <div className="mb-4">
+          <ModeTabs modes={MODES} value={mode} onChange={(m) => dbSet(`${base}/mode`, m)} />
+        </div>
+      )}
       <div className="max-w-md mx-auto space-y-2">
         <div className="flex gap-2">
           <input value={real} onChange={(e) => setReal(e.target.value)} placeholder="진짜 제시어" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
@@ -108,39 +130,55 @@ function HostView({ base, meta, players, teams }) {
         </div>
       </div>
 
-      {/* 팀별 스파이 인원 */}
-      <div className="mt-3 grid gap-2 max-w-xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
-        {teams.map((t) => {
-          const maxN = Math.max(0, t.members.length - 1)
-          return (
-            <div key={t.id} className="clay-inset p-2">
-              <div className="font-display truncate" style={{ color: t.color }}>{t.name}</div>
-              <div className="flex items-center justify-center gap-2 mt-1">
-                <button onClick={() => setCount(t.id, -1, maxN)} disabled={cnt(t.id) <= 0} className="w-8 h-8 rounded-full clay-btn text-lg disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>−</button>
-                <span className="font-display text-xl w-8">{Math.min(cnt(t.id), maxN)}</span>
-                <button onClick={() => setCount(t.id, 1, maxN)} disabled={cnt(t.id) >= maxN} className="w-8 h-8 rounded-full clay-btn text-lg disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>+</button>
+      {/* 스파이 인원 — 개인전: 방 전체 1개 / 팀전: 팀별 */}
+      {mode === 'solo' ? (
+        <div className="mt-3 flex items-center justify-center gap-3">
+          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>스파이 인원</span>
+          <button onClick={() => setSoloN((n) => Math.max(0, n - 1))} disabled={soloN <= 0} className="w-9 h-9 rounded-full clay-btn text-xl disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>−</button>
+          <span className="font-display text-2xl w-10">{Math.min(soloN, soloMax)}</span>
+          <button onClick={() => setSoloN((n) => Math.min(soloMax, n + 1))} disabled={soloN >= soloMax} className="w-9 h-9 rounded-full clay-btn text-xl disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>+</button>
+          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>/ {players.length}명</span>
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-2 max-w-xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
+          {teams.map((t) => {
+            const maxN = Math.max(0, t.members.length - 1)
+            return (
+              <div key={t.id} className="clay-inset p-2">
+                <div className="font-display truncate" style={{ color: t.color }}>{t.name}</div>
+                <div className="flex items-center justify-center gap-2 mt-1">
+                  <button onClick={() => setCount(t.id, -1, maxN)} disabled={cnt(t.id) <= 0} className="w-8 h-8 rounded-full clay-btn text-lg disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>−</button>
+                  <span className="font-display text-xl w-8">{Math.min(cnt(t.id), maxN)}</span>
+                  <button onClick={() => setCount(t.id, 1, maxN)} disabled={cnt(t.id) >= maxN} className="w-8 h-8 rounded-full clay-btn text-lg disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>+</button>
+                </div>
+                <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>{t.members.length}명</div>
               </div>
-              <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>{t.members.length}명</div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
       <Button className="mt-3" variant="warn" onClick={distribute}>역할 배분</Button>
 
       {assign && (
         <div className="mt-4">
           <p style={{ color: 'var(--ink-soft)' }}>진짜 <b style={{ color: 'var(--ink)' }}>{assign.realWord}</b> · 가짜 <b style={{ color: 'var(--ink)' }}>{assign.fakeWord}</b></p>
-          <div className="mt-2 grid gap-2 max-w-xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
-            {teams.map((t) => {
-              const spyNames = t.members.filter((m) => assign.spyIds?.[m.id]).map((m) => m.nickname)
-              return (
-                <div key={t.id} className="clay-inset p-2 text-sm">
-                  <div className="font-display truncate" style={{ color: t.color }}>{t.name}</div>
-                  <div className="mt-1" style={{ color: 'var(--c-coral)' }}>🕵️ {spyNames.length ? spyNames.join(', ') : '없음'}</div>
-                </div>
-              )
-            })}
-          </div>
+          {(assign.mode || 'team') === 'solo' ? (
+            <div className="mt-2 max-w-md mx-auto clay-inset p-3 text-sm">
+              <span style={{ color: 'var(--c-coral)' }}>🕵️ 스파이: {players.filter((p) => assign.spyIds?.[p.id]).map((p) => p.nickname).join(', ') || '없음'}</span>
+            </div>
+          ) : (
+            <div className="mt-2 grid gap-2 max-w-xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
+              {teams.map((t) => {
+                const spyNames = t.members.filter((m) => assign.spyIds?.[m.id]).map((m) => m.nickname)
+                return (
+                  <div key={t.id} className="clay-inset p-2 text-sm">
+                    <div className="font-display truncate" style={{ color: t.color }}>{t.name}</div>
+                    <div className="mt-1" style={{ color: 'var(--c-coral)' }}>🕵️ {spyNames.length ? spyNames.join(', ') : '없음'}</div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
           <p className="mt-1 text-xs" style={{ color: 'var(--ink-soft)' }}>(스파이는 진행자만 보여요)</p>
           {reveal && <p className="mt-2 font-display text-2xl animate-pop" style={{ color: 'var(--c-coral)' }}>정답 공개!</p>}
         </div>
@@ -156,10 +194,11 @@ function PlayerView({ base, meta, me }) {
   const amSpy = !!assign.spyIds?.[me.id]
   const myWord = amSpy ? assign.fakeWord : assign.realWord
   const reveal = meta.roundStatus === 'reveal'
+  const solo = (assign.mode || 'team') === 'solo'
 
   return (
     <div className="text-center">
-      <p className="mb-3" style={{ color: 'var(--ink-soft)' }}>우리 팀끼리 · 주변에 화면 보이지 마세요 🙈</p>
+      <p className="mb-3" style={{ color: 'var(--ink-soft)' }}>{solo ? '다 같이' : '우리 팀끼리'} · 주변에 화면 보이지 마세요 🙈</p>
       {!peek ? (
         <Button variant="ghost" className="w-full py-6" onClick={() => setPeek(true)}>👆 내 제시어 확인</Button>
       ) : (
@@ -167,7 +206,7 @@ function PlayerView({ base, meta, me }) {
           <div className="opacity-80">내 제시어</div>
           <div className="font-display text-4xl mt-1">{myWord}</div>
           {reveal && <div className="mt-3 font-display text-2xl">{amSpy ? '🕵️ 당신은 스파이였다!' : '😇 시민'}</div>}
-          {!reveal && <p className="mt-2 text-sm opacity-80">우리 팀 모두 같은 단어? 아니면 내가 스파이?</p>}
+          {!reveal && <p className="mt-2 text-sm opacity-80">{solo ? '모두' : '우리 팀 모두'} 같은 단어? 아니면 내가 스파이?</p>}
           <button className="mt-4 text-sm underline opacity-80" onClick={() => setPeek(false)}>가리기</button>
         </div>
       )}
@@ -179,9 +218,9 @@ export default {
   id: 'spy',
   name: '스파이',
   emoji: '🕵️',
-  tagline: '팀별 스파이 색출',
+  tagline: '스파이 색출 · 팀전/개인전',
   genres: ['mind'],
-  traits: ['team'],
+  traits: ['team', 'solo'],
   HostView,
   PlayerView,
 }

@@ -1,10 +1,10 @@
-// Host 정산: 팀 점수 가감 + 개인/팀 쿠폰 지급·차감 (클레이).
+// Host 정산: 개인 쿠폰(패스권) 지급·차감 (클레이). 팀 점수는 상단 Scoreboard에서 조절.
 import { useState } from 'react'
-import { addTeamScore, changeItem } from '../lib/actions'
+import { changeItem } from '../lib/actions'
 import { personalItems } from '../config/items'
 import { Card } from './ui'
 
-export default function AwardPanel({ roomId, players, teams }) {
+export default function AwardPanel({ roomId, players }) {
   const [ownerId, setOwnerId] = useState('')
   const pass = personalItems()[0] // 패스권 (유일한 쿠폰)
   const sel = 'clay-inset px-3 py-2 text-sm bg-[var(--surface-2)]'
@@ -16,21 +16,6 @@ export default function AwardPanel({ roomId, players, teams }) {
 
   return (
     <Card className="space-y-3">
-      <div>
-        <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>팀 점수</div>
-        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))' }}>
-          {teams.map((t) => (
-            <div key={t.id} className="clay-inset p-2 text-center">
-              <div className="font-display text-sm truncate" style={{ color: t.color }}>{t.name} · {t.score}</div>
-              <div className="mt-1 flex justify-center gap-1">
-                {[-1, 1, 5].map((d) => (
-                  <button key={d} onClick={() => addTeamScore(roomId, t.id, d)} className="clay-btn px-2 py-1 text-xs" style={{ background: d > 0 ? 'var(--c-mint)' : 'var(--c-coral)' }}>{d > 0 ? `+${d}` : d}</button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
       {pass && (
         <div>
           <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>{pass.emoji} {pass.name} 지급 / 차감 <span className="opacity-70">· {pass.desc}</span></div>
