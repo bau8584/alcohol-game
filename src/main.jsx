@@ -2,9 +2,12 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { createBrowserRouter, RouterProvider } from 'react-router-dom'
 import './index.css'
+import { initTheme } from './lib/theme'
 import Home from './pages/Home.jsx'
 import Host from './pages/Host.jsx'
 import Player from './pages/Player.jsx'
+
+initTheme()
 
 const router = createBrowserRouter([
   { path: '/', element: <Home /> },

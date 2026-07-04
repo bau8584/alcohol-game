@@ -2,6 +2,91 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ===== 폰트 (로컬) — 제목: OkDanDan / 본문: Okticon ===== */
+@font-face {
+  font-family: 'OkDanDan';
+  src: url('/fonts/OkDanDan-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Okticon';
+  src: url('/fonts/okticon_light.ttf') format('truetype');
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Okticon';
+  src: url('/fonts/okticon_regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Okticon';
+  src: url('/fonts/okticon_bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* ================================================================
+   테마 — 배경/표면/글자/그림자만 바꾸고, 캔디 강조색은 공통 유지
+   ================================================================ */
+:root,
+[data-theme='grape'] {
+  --bg1: #efe6ff;
+  --bg2: #ffe4f3;
+  --surface: #ffffff;
+  --surface-2: #f4eeff;
+  --ink: #4b3b6b;
+  --ink-soft: #9d8bc7;
+  --clay-hi: rgba(255, 255, 255, 0.8);
+  --clay-sh: rgba(123, 88, 184, 0.28);
+  --clay-drop: rgba(123, 88, 184, 0.3);
+}
+[data-theme='peach'] {
+  --bg1: #ffe9d6;
+  --bg2: #ffd6ce;
+  --surface: #fffaf4;
+  --surface-2: #fff0e6;
+  --ink: #6b4a3b;
+  --ink-soft: #c39c88;
+  --clay-hi: rgba(255, 255, 255, 0.85);
+  --clay-sh: rgba(201, 122, 88, 0.26);
+  --clay-drop: rgba(201, 122, 88, 0.3);
+}
+[data-theme='mint'] {
+  --bg1: #d5f6ec;
+  --bg2: #d2f0ff;
+  --surface: #f5fffb;
+  --surface-2: #e4fbf2;
+  --ink: #2f5d54;
+  --ink-soft: #7db9ae;
+  --clay-hi: rgba(255, 255, 255, 0.85);
+  --clay-sh: rgba(52, 150, 128, 0.24);
+  --clay-drop: rgba(52, 150, 128, 0.28);
+}
+[data-theme='dark'] {
+  --bg1: #2a2440;
+  --bg2: #3b2a4e;
+  --surface: #3a3358;
+  --surface-2: #2f2949;
+  --ink: #f3edff;
+  --ink-soft: #b3a6d9;
+  --clay-hi: rgba(255, 255, 255, 0.08);
+  --clay-sh: rgba(0, 0, 0, 0.5);
+  --clay-drop: rgba(0, 0, 0, 0.55);
+}
+
+/* 캔디 강조색 (테마 공통) */
+:root {
+  --c-grape: #9b7bf0;
+  --c-coral: #ff7a6b;
+  --c-mint: #35d29b;
+  --c-sky: #45c2f5;
+  --c-lemon: #ffcb3d;
+  --c-pink: #ff7fb0;
+}
+
 html,
 body,
 #root {
@@ -10,16 +95,103 @@ body,
 
 body {
   margin: 0;
-  background: #0b1020;
-  color: #f8fafc;
-  font-family: 'Pretendard', system-ui, -apple-system, 'Segoe UI', Roboto, 'Apple SD Gothic Neo',
-    'Malgun Gothic', sans-serif;
+  background: linear-gradient(160deg, var(--bg1) 0%, var(--bg2) 100%);
+  background-attachment: fixed;
+  color: var(--ink);
+  font-family: 'Okticon', system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
 
-/* 버튼 텍스트 선택 방지 (부저/지목 게임 오작동 방지) */
 button {
   user-select: none;
   touch-action: manipulation;
+  font-family: inherit;
+}
+
+.font-display {
+  font-family: 'OkDanDan', 'Okticon', sans-serif;
+  letter-spacing: 0.01em;
+}
+
+/* ── 점토 표면(볼록) ── */
+.clay {
+  border-radius: 30px;
+  background: var(--surface);
+  box-shadow:
+    inset 5px 5px 10px var(--clay-hi),
+    inset -6px -6px 11px var(--clay-sh),
+    8px 9px 20px var(--clay-drop);
+}
+
+/* 눌린(오목) — 입력창 */
+.clay-inset {
+  border-radius: 22px;
+  background: var(--surface-2);
+  box-shadow:
+    inset 5px 5px 11px var(--clay-sh),
+    inset -4px -4px 9px var(--clay-hi);
+  color: var(--ink);
+}
+.clay-inset::placeholder {
+  color: var(--ink-soft);
+}
+
+/* 점토 버튼 (색은 인라인 배경, 그림자는 공통) */
+.clay-btn {
+  border-radius: 26px;
+  color: #fff;
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease,
+    filter 0.08s ease;
+  box-shadow:
+    inset 4px 4px 8px rgba(255, 255, 255, 0.5),
+    inset -5px -5px 9px rgba(0, 0, 0, 0.16),
+    5px 7px 14px var(--clay-drop);
+}
+.clay-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.clay-btn:active:not(:disabled) {
+  transform: translateY(3px) scale(0.97);
+  box-shadow:
+    inset 5px 5px 10px rgba(0, 0, 0, 0.22),
+    inset -3px -3px 8px rgba(255, 255, 255, 0.3);
+}
+.clay-btn:disabled {
+  opacity: 0.5;
+  box-shadow:
+    inset 3px 3px 7px var(--clay-sh),
+    inset -3px -3px 7px var(--clay-hi);
+}
+
+@keyframes clay-pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.09);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.animate-pop {
+  animation: clay-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes clay-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+.animate-pulseRing {
+  animation: clay-ring 1.2s ease-out infinite;
 }

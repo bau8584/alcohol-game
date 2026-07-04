@@ -26,7 +26,10 @@ export default function Countdown({ endsAt, size = 'text-6xl', onDone }) {
   const secs = (remain / 1000).toFixed(1)
   const danger = remain < 5000
   return (
-    <div className={`font-black tabular-nums ${size} ${danger ? 'text-rose-400 animate-pulse' : 'text-white'}`}>
+    <div
+      className={`font-display tabular-nums ${size} ${danger ? 'animate-pulse' : ''}`}
+      style={{ color: danger ? 'var(--c-coral)' : 'var(--ink)' }}
+    >
       {secs}
       <span className="text-2xl opacity-60">s</span>
     </div>

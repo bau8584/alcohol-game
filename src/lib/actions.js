@@ -9,12 +9,16 @@ import {
 } from './db'
 import { TEAMS } from '../config/teams'
 import { initialItems } from '../config/items'
+import { ROSTER } from '../config/roster'
 
 const genRoomId = () => Math.random().toString().slice(2, 8) // 6자리 숫자 방코드
 
-// ── 방 생성 (호스트) ─────────────────────────────
-export async function createRoom(hostPin) {
-  const roomId = genRoomId()
+// ── 테스트 운영용 고정 방 ────────────────────────
+export const SB_ROOM_ID = 'SB'
+export const SB_HOST_PIN = '4321'
+
+// 방 문서를 새로 씀 (id 지정)
+async function writeNewRoom(roomId, hostPin) {
   const teams = TEAMS.reduce((acc, t) => {
     acc[t.id] = { score: 0, items: initialItems('team') }
     return acc
@@ -32,6 +36,31 @@ export async function createRoom(hostPin) {
     teams,
   })
   return roomId
+}
+
+// ── 방 생성 (호스트, 랜덤 코드) ──────────────────
+export const createRoom = (hostPin) => writeNewRoom(genRoomId(), hostPin)
+
+// ── 고정 방 확보 (없으면 생성) ───────────────────
+export async function ensureFixedRoom(roomId = SB_ROOM_ID, hostPin = SB_HOST_PIN) {
+  if (!(await roomExists(roomId))) await writeNewRoom(roomId, hostPin)
+  return roomId
+}
+
+// ── 명단(ROSTER)을 방에 시드: 팀 배정된 테스트 참가자들 생성 ──
+export async function seedRoster(roomId) {
+  const updates = {}
+  ROSTER.forEach((p, i) => {
+    updates[`players/seed${i}`] = {
+      nickname: p.name,
+      teamId: p.team,
+      connected: true,
+      seed: true,
+      joinedAt: Date.now() + i,
+      items: initialItems('personal'),
+    }
+  })
+  await dbUpdate(roomPath(roomId), updates)
 }
 
 export async function roomExists(roomId) {
@@ -107,3 +136,26 @@ export const playBase = (roomId, roundSeq, gameId) =>
 
 // 방 전체 삭제 (호스트 종료)
 export const destroyRoom = (roomId) => dbRemove(roomPath(roomId))
+
+// ── 방 초기화 (참가자·점수·재화·진행상태 전부 리셋, 방/PIN 은 유지) ──
+export async function resetRoom(roomId) {
+  const hostPin = await dbGet(roomPath(roomId, 'meta/hostPin'))
+  const teams = TEAMS.reduce((acc, t) => {
+    acc[t.id] = { score: 0, items: initialItems('team') }
+    return acc
+  }, {})
+  await dbUpdate(roomPath(roomId), {
+    players: null, // 모든 참가자 제거
+    play: null, // 모든 게임 상호작용 데이터 제거
+    teams, // 점수/팀재화 초기화
+    meta: {
+      hostPin: String(hostPin ?? ''),
+      phase: 'lobby',
+      activeGameId: null,
+      roundStatus: 'staged',
+      roundSeq: 0,
+      prompt: '',
+      createdAt: Date.now(),
+    },
+  })
+}
