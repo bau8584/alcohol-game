@@ -115,19 +115,20 @@ function HostView({ base, meta, players, teams }) {
   return (
     <div className="text-center">
       {!reveal && (
-        <div className="mb-3 max-w-md mx-auto">
-          <input value={draft.q} onChange={(e) => setQ(e.target.value)} placeholder="제시어 (직접 입력 또는 🎲)" className="clay-inset w-full px-3 py-2.5 text-center font-display" />
+        <div className="mb-3 max-w-md mx-auto text-left">
+          <div className="flex gap-2 justify-center mb-2">
+            <button onClick={() => roll(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲 일반</button>
+            <button onClick={() => roll(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+          </div>
+          <div className="text-xs mb-1" style={{ color: 'var(--ink-soft)' }}>✏️ 주사위로 뽑은 뒤, 제시어·보기를 원하는 대로 고쳐도 돼요</div>
+          <input value={draft.q} onChange={(e) => setQ(e.target.value)} placeholder="제시어 입력" className="clay-inset w-full px-3 py-2.5 text-center font-display" />
           <div className="grid grid-cols-2 gap-2 mt-2">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-1">
-                <span className="font-display w-5 shrink-0" style={{ color: COLORS[i] }}>{LETTERS[i]}</span>
-                <input value={draft.opts?.[i] || ''} onChange={(e) => setOpt(i, e.target.value)} placeholder={`보기 ${i + 1}`} className="clay-inset flex-1 min-w-0 px-2 py-2 text-center text-sm" />
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="font-display w-6 h-8 shrink-0 flex items-center justify-center rounded-lg text-sm" style={{ background: COLORS[i], color: '#fff' }}>{LETTERS[i]}</span>
+                <input value={draft.opts?.[i] || ''} onChange={(e) => setOpt(i, e.target.value)} placeholder={`보기 ${i + 1}`} className="clay-inset flex-1 min-w-0 px-2 py-2 text-center" />
               </div>
             ))}
-          </div>
-          <div className="flex gap-2 mt-2 justify-center">
-            <button onClick={() => roll(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲</button>
-            <button onClick={() => roll(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
           </div>
         </div>
       )}
