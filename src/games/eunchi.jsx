@@ -13,29 +13,38 @@ const LEVELS = [
 const DEFAULT_MS = 220
 const COOLDOWN_MS = 2000 // 한 번 누르면 이 시간 동안 다시 못 누름(난타 차단)
 
-// taps(서버 ts) → 안전 획득/충돌/다음 번호 결정. 모든 클라이언트가 동일 입력으로 동일 결과.
+// taps(서버 ts) → 안전 획득/무효/다음 번호 결정. 모든 클라이언트가 동일 입력→동일 결과(결정적).
+// 규칙: ① 한 사람은 번호 하나만(획득 후 추가 탭 무시).
+//       ② 직전에 '안전하게' 번호를 받은 사람과 clashMs 이내로 붙여 누르면 그 (늦은) 사람만 무효+벌칙.
+//          → 먼저 받은 번호는 소급 취소되지 않음. 간격 두고 혼자 누른 사람이 안전.
 function resolve(tapsRaw, clashMs, N) {
   const taps = toList(tapsRaw)
     .filter((t) => typeof t.ts === 'number')
     .sort((a, b) => a.ts - b.ts)
-  // 이웃(앞·뒤)과 clashMs 안에 있으면 충돌
-  const clashed = taps.map((t, i) => {
-    const prev = taps[i - 1]
-    const next = taps[i + 1]
-    return (prev && t.ts - prev.ts < clashMs) || (next && next.ts - t.ts < clashMs)
-  })
-  let next = 1
   const assigned = [] // { ...tap, k }  안전하게 번호 획득
-  const clashers = [] // 동시에 눌러 무효+벌칙
-  taps.forEach((t, i) => {
-    if (clashed[i]) return clashers.push(t)
-    if (next <= N) assigned.push({ ...t, k: next++ })
-  })
+  const assignedPids = new Set() // 이미 번호를 받은 사람
+  const voidByPid = new Map() // pid → 대표 무효 탭 (아직 번호 못 받고 벌칙)
+  let lastSafeTs = null
+  let next = 1
+  for (const t of taps) {
+    if (assignedPids.has(t.pid)) continue // 이미 번호 획득 → 추가 탭 무시(독식 방지)
+    if (lastSafeTs !== null && t.ts - lastSafeTs < clashMs) {
+      voidByPid.set(t.pid, t) // 직전 안전 탭과 너무 붙음 → 무효 + 벌칙
+      continue
+    }
+    if (next <= N) {
+      assigned.push({ ...t, k: next++ })
+      assignedPids.add(t.pid)
+      voidByPid.delete(t.pid) // 앞서 무효였어도 이제 획득했으면 벌칙 해제
+      lastSafeTs = t.ts
+    }
+  }
+  const clashers = [...voidByPid.values()].filter((t) => !assignedPids.has(t.pid))
   return { assigned, clashers, next, done: next > N && N > 0 }
 }
 
 function HostView({ base, meta, players }) {
-  const N = players.length
+  const N = players.filter((p) => p.connected !== false).length // 접속자만 목표 인원
   const tapsRaw = useValue(`${base}/taps`)
   const clashMs = useValue(`${base}/clashMs`) || DEFAULT_MS
   const { assigned, clashers, next, done } = useMemo(() => resolve(tapsRaw, clashMs, N), [tapsRaw, clashMs, N])
@@ -46,10 +55,10 @@ function HostView({ base, meta, players }) {
   return (
     <div className="text-center">
       <div className="font-display text-xl">🔢 1부터 {N}까지 아무나 순서대로!</div>
-      <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>동시에 누르면 그 번호 무효 + 전원 벌칙 · 한 번 누르면 잠깐 잠김</div>
+      <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>직전 사람과 너무 붙여 누르면 그 사람 무효 + 벌칙 · 한 번 누르면 잠깐 잠김</div>
 
       <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
-        <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>동시 판정</span>
+        <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>최소 간격</span>
         {LEVELS.map((lv) => (
           <button
             key={lv.id}
@@ -82,10 +91,10 @@ function HostView({ base, meta, players }) {
         {!assigned.length && !clashers.length && <p className="py-6" style={{ color: 'var(--ink-soft)' }}>아직 아무도 안 외쳤어요. 🤫</p>}
       </div>
 
-      {/* 동시 입력(무효+벌칙) */}
+      {/* 너무 붙여 누름(무효+벌칙) */}
       {clashCount > 0 && (
         <div className="mt-4">
-          <p className="font-bold" style={{ color: 'var(--c-coral)' }}>💥 동시에 눌러서 무효 · 벌칙!</p>
+          <p className="font-bold" style={{ color: 'var(--c-coral)' }}>💥 너무 붙여 눌러서 무효 · 벌칙!</p>
           <div className="mt-2 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
             {clashers.map((c) => (
               <span key={c.id} className="clay-inset px-3 py-1.5 font-bold animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
@@ -100,7 +109,7 @@ function HostView({ base, meta, players }) {
 }
 
 function PlayerView({ base, meta, players, me }) {
-  const N = players.length
+  const N = players.filter((p) => p.connected !== false).length // 접속자만 목표 인원
   const tapsRaw = useValue(`${base}/taps`)
   const clashMs = useValue(`${base}/clashMs`) || DEFAULT_MS
   const open = meta.roundStatus === 'open'
@@ -148,9 +157,9 @@ function PlayerView({ base, meta, players, me }) {
       </button>
 
       {iClashed ? (
-        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>💥 남과 동시에 눌렀어요 — 무효 + 벌칙! 다시 노려보세요</p>
+        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>💥 직전 사람과 너무 붙여 눌렀어요 — 무효 + 벌칙! 간격 두고 다시</p>
       ) : (
-        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>혼자 조용히 눌러야 안전! 동시에 누르면 둘 다 벌칙 🫣</p>
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>앞사람과 간격을 두고 눌러야 안전! 붙여 누르면 벌칙 🫣</p>
       )}
     </div>
   )

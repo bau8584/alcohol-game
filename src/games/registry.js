@@ -15,8 +15,9 @@ import charades from './decks/charades.js'
 import wordrelay from './decks/wordrelay.js'
 import category from './decks/category.js'
 import roulette from './roulette.jsx'
+import king from './king.jsx'
 
-export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette]
+export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 
