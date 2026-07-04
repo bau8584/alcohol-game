@@ -1,0 +1,11 @@
+{
+  // Cloudflare Worker 로 정적 사이트(빌드 결과 dist/)를 서빙하는 설정.
+  // Pages Git 연결이 없는 신형 계정에서 이 방식으로 배포합니다.
+  "name": "alcohol-game",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./dist",
+    // SPA 라우팅(/host/:id, /play/:id)이 새로고침해도 index.html 로 처리되도록
+    "not_found_handling": "single-page-application"
+  }
+}
