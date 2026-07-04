@@ -1,0 +1,15 @@
+{
+  "rules": {
+    "rooms": {
+      "$roomId": {
+        ".read": true,
+        ".write": true,
+        "meta": {
+          "hostPin": {
+            ".read": true
+          }
+        }
+      }
+    }
+  }
+}
