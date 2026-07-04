@@ -63,6 +63,19 @@ export async function seedRoster(roomId) {
   await dbUpdate(roomPath(roomId), updates)
 }
 
+// ── 테스트 시드 참가자(seed:true)만 제거. 실제 참가자는 유지 ──
+export async function clearSeeds(roomId) {
+  const players = await dbGet(roomPath(roomId, 'players'))
+  if (!players) return 0
+  const updates = {}
+  Object.entries(players).forEach(([id, p]) => {
+    if (p?.seed) updates[`players/${id}`] = null
+  })
+  const n = Object.keys(updates).length
+  if (n) await dbUpdate(roomPath(roomId), updates)
+  return n
+}
+
 export async function roomExists(roomId) {
   return !!(await dbGet(roomPath(roomId, 'meta')))
 }
@@ -87,6 +100,10 @@ export async function joinRoom(roomId, playerId, nickname) {
 
 export const setPlayerTeam = (roomId, playerId, teamId) =>
   dbUpdate(roomPath(roomId, `players/${playerId}`), { teamId })
+
+// ── 호스트: 참가자 강퇴 (레코드 삭제 → 그 사람 폰은 자동으로 입장 화면으로, 재입장 가능) ──
+export const kickPlayer = (roomId, playerId) =>
+  dbRemove(roomPath(roomId, `players/${playerId}`))
 
 export const setConnected = (roomId, playerId, v) =>
   dbUpdate(roomPath(roomId, `players/${playerId}`), { connected: v })

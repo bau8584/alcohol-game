@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { GAMES, gameById, GENRES, TRAITS, genreById, traitById } from '../games/registry'
-import { checkHostPin, startGame, setRoundStatus, setPrompt, newRound, endGame, resetRoom, playBase, addTeamScore } from '../lib/actions'
+import { checkHostPin, startGame, setRoundStatus, setPrompt, newRound, endGame, resetRoom, playBase, addTeamScore, clearSeeds, setPlayerTeam, kickPlayer } from '../lib/actions'
+import { TEAMS } from '../config/teams'
 import Scoreboard from '../components/Scoreboard'
 import AwardPanel from '../components/AwardPanel'
 import ThemeSwitcher from '../components/ThemeSwitcher'
@@ -80,6 +81,16 @@ export default function Host() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {players.some((p) => p.seed) && (
+            <button
+              onClick={() => clearSeeds(roomId)}
+              className="clay-btn font-display px-3 py-2 text-base"
+              style={{ background: 'var(--c-grape)', color: '#fff' }}
+              title="테스트로 시드된 가짜 참가자만 제거 (실제 참가자는 유지)"
+            >
+              🧪 테스트 명단 지우기
+            </button>
+          )}
           <button
             onClick={doReset}
             className="clay-btn font-display px-3 py-2 text-base"
@@ -92,6 +103,8 @@ export default function Host() {
       </div>
 
       <Scoreboard teams={teams} />
+
+      <PlayerManager roomId={roomId} players={players} />
 
       {!game ? (
         <Card>
@@ -157,8 +170,8 @@ export default function Host() {
               <Button variant="ghost" onClick={() => endGame(roomId)}>게임 목록</Button>
             </div>
             {showPrompt && (
-              <div className="flex gap-2 mb-3">
-                <input value={prompt} onChange={(e) => writePrompt(e.target.value)} placeholder={game.promptLabel} className="clay-inset flex-1 px-4 py-2.5" />
+              <div className="flex gap-2 mb-3 flex-wrap">
+                <input value={prompt} onChange={(e) => writePrompt(e.target.value)} placeholder={game.promptLabel} className="clay-inset flex-1 min-w-0 px-4 py-2.5" />
                 {game.presets?.length > 0 && (
                   <button
                     onClick={() => writePrompt(game.presets[Math.floor(Math.random() * game.presets.length)])}
@@ -217,6 +230,52 @@ export default function Host() {
 
 function Center({ children }) {
   return <div className="min-h-full flex items-center justify-center" style={{ color: 'var(--ink-soft)' }}>{children}</div>
+}
+
+// 참가자 관리: 팀 재배정 + 강퇴 (접었다 펴기). 게임 중에도 항상 접근 가능.
+function PlayerManager({ roomId, players }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Card>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between">
+        <span className="font-display text-xl">👥 참가자 관리 <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>({players.length}명)</span></span>
+        <span style={{ color: 'var(--ink-soft)' }}>{open ? '▲ 접기' : '▼ 팀변경·강퇴'}</span>
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {players.map((p) => (
+            <div key={p.id} className="clay-inset p-2 flex flex-wrap items-center gap-2">
+              <span className="font-bold flex-1 min-w-[70px] truncate">
+                {p.nickname}
+                {p.seed && <span className="ml-1 text-xs" style={{ color: 'var(--ink-soft)' }}>(테스트)</span>}
+              </span>
+              <div className="flex gap-1">
+                {TEAMS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setPlayerTeam(roomId, p.id, t.id)}
+                    className="clay-btn px-2.5 py-1 text-base"
+                    style={p.teamId === t.id ? { background: t.color, color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
+                    title={`${t.name} 팀으로`}
+                  >
+                    {t.emoji}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { if (confirm(`${p.nickname} 님을 강퇴할까요?\n(그 사람 폰은 입장 화면으로 돌아가고, 다시 들어올 수 있어요)`)) kickPlayer(roomId, p.id) }}
+                className="clay-btn px-2.5 py-1 text-sm"
+                style={{ background: 'var(--c-coral)', color: '#fff' }}
+              >
+                강퇴
+              </button>
+            </div>
+          ))}
+          {!players.length && <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>아직 아무도 없어요.</p>}
+        </div>
+      )}
+    </Card>
+  )
 }
 
 // 게임 정산: 이긴 팀에 점수 원터치 (+1 일반 / +3 큰 게임)

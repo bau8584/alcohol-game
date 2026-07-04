@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ensureFixedRoom, seedRoster, joinRoom, setPlayerTeam, SB_ROOM_ID, SB_HOST_PIN } from '../lib/actions'
+import { ensureFixedRoom, seedRoster, clearSeeds, joinRoom, setPlayerTeam, SB_ROOM_ID, SB_HOST_PIN } from '../lib/actions'
 import { ensurePlayerId, saveSession } from '../lib/session'
 import { Button } from '../components/ui'
 import ThemeSwitcher from '../components/ThemeSwitcher'
@@ -18,6 +18,7 @@ export default function Home() {
     setBusy(true)
     try {
       await ensureFixedRoom()
+      await clearSeeds(SB_ROOM_ID) // 실제 입장 시 테스트 명단 자동 제거
       nav(`/play/${SB_ROOM_ID}`)
     } catch (e) {
       setErr('입장 실패: ' + e.message)
@@ -30,6 +31,7 @@ export default function Home() {
     setBusy(true)
     try {
       await ensureFixedRoom()
+      await clearSeeds(SB_ROOM_ID) // 실제 호스트 입장 시 테스트 명단 자동 제거
       localStorage.setItem(`agw.host.${SB_ROOM_ID}`, '1')
       nav(`/host/${SB_ROOM_ID}`)
     } catch (e) {
