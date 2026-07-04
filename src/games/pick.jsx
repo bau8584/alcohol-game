@@ -1,160 +1,221 @@
-// ② 고르기 — 모드: person(사람 지목, 득표 게이지) / ab(A·B 밸런스, 팀 싱크율)
-import { useMemo } from 'react'
-import { useValue, dbSet, toList } from '../lib/db'
-import ModeTabs from '../components/ModeTabs'
+// 고르기 — 사람 지목. 시작 → 공개(결과). 참가자가 질문 제안 → 호스트가 골라 씀.
+import { useMemo, useState } from 'react'
+import { useValue, dbSet, dbUpdate, dbPush, toList } from '../lib/db'
+import { Button } from '../components/ui'
 
-const MODES = [
-  { id: 'person', label: '사람 지목', emoji: '🎯' },
-  { id: 'ab', label: 'A·B 밸런스', emoji: '⚖️' },
-]
+const MAX_PICK = 5
+// 한 참가자의 선택을 배열로 정규화 (신 구조 {tid:true} / 구 구조 단일 문자열 모두 지원)
+const selectedIds = (sel) =>
+  typeof sel === 'string' ? [sel] : sel && typeof sel === 'object' ? Object.keys(sel).filter((k) => sel[k]) : []
 
-/* ── 사람 지목 ── */
-function PersonHost({ base, meta, players }) {
+function HostView({ base, meta, players, writePrompt }) {
   const raw = useValue(`${base}/pick`)
+  const maxPick = useValue(`${base}/maxPick`) || 1
+  const suggestions = toList(useValue(`${base}/suggestions`))
   const ranked = useMemo(() => {
     const counts = {}
-    toList(raw).forEach((p) => (counts[p.value] = (counts[p.value] || 0) + 1))
+    Object.values(raw || {}).forEach((sel) => selectedIds(sel).forEach((tid) => (counts[tid] = (counts[tid] || 0) + 1)))
     return players.map((p) => ({ ...p, votes: counts[p.id] || 0 })).sort((a, b) => b.votes - a.votes)
   }, [raw, players])
-  const total = toList(raw).length
+  const votedIds = useMemo(
+    () => new Set(Object.entries(raw || {}).filter(([, sel]) => selectedIds(sel).length > 0).map(([pid]) => pid)),
+    [raw]
+  )
+  const setMax = (d) => dbSet(`${base}/maxPick`, Math.min(MAX_PICK, Math.max(1, maxPick + d)))
+  const total = votedIds.size
   const max = Math.max(1, ...ranked.map((r) => r.votes))
   const top = ranked[0]?.votes > 0 ? ranked[0] : null
-  return (
-    <div>
-      <div className="flex justify-between text-sm" style={{ color: 'var(--ink-soft)' }}>
-        <span>{meta.prompt || '질문을 입력하세요'}</span>
-        <span>{total}/{players.length}</span>
-      </div>
-      {top && <div className="text-center mt-2"><span style={{ color: 'var(--ink-soft)' }}>최다 </span><span className="font-display text-3xl">{top.nickname}</span></div>}
-      <div className="mt-3 space-y-2 max-w-lg mx-auto">
-        {ranked.filter((r) => r.votes > 0).map((r) => (
-          <div key={r.id} className="flex items-center gap-2">
-            <span className="w-24 truncate text-right font-bold">{r.nickname}</span>
-            <div className="flex-1 h-7 clay-inset overflow-hidden relative">
-              <div className="absolute inset-y-1 left-1 rounded-full flex items-center justify-end pr-2 text-sm font-bold text-white transition-all duration-500" style={{ width: `calc(${(r.votes / max) * 100}% - 8px)`, background: 'var(--c-grape)' }}>{r.votes}</div>
-            </div>
-          </div>
-        ))}
-        {!top && <p className="text-center py-6" style={{ color: 'var(--ink-soft)' }}>아직 지목이 없어요.</p>}
-      </div>
-    </div>
-  )
-}
-
-function PersonPlayer({ base, meta, players, me }) {
-  const myPick = useValue(`${base}/pick/${me.id}`)
-  const open = meta.roundStatus === 'open'
-  return (
-    <div>
-      <p className="text-center mb-3" style={{ color: 'var(--ink-soft)' }}>{meta.prompt || '지목할 사람'}</p>
-      <div className="grid grid-cols-2 gap-2">
-        {players.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => open && dbSet(`${base}/pick/${me.id}`, p.id)}
-            disabled={!open}
-            className="clay-btn py-3 font-display text-lg"
-            style={myPick === p.id ? { background: 'var(--c-grape)' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
-          >
-            {p.nickname}{p.id === me.id && ' (나)'}
-          </button>
-        ))}
-      </div>
-      {myPick && <p className="mt-3 text-center text-sm" style={{ color: 'var(--c-mint)' }}>지목 완료 · 변경 가능</p>}
-    </div>
-  )
-}
-
-/* ── A·B 밸런스 ── */
-function AbHost({ base, meta, teams }) {
-  const raw = useValue(`${base}/choice`)
-  const stats = useMemo(() => {
-    const pick = Object.fromEntries(toList(raw).map((c) => [c.id, c.value]))
-    return teams.map((t) => {
-      const ans = t.members.map((m) => pick[m.id]).filter(Boolean)
-      const a = ans.filter((x) => x === 'A').length
-      const b = ans.filter((x) => x === 'B').length
-      const sync = ans.length ? Math.round((Math.max(a, b) / ans.length) * 100) : 0
-      return { ...t, a, b, answered: ans.length, sync }
-    })
-  }, [raw, teams])
   const reveal = meta.roundStatus === 'reveal'
-  const answered = stats.filter((s) => s.answered > 0)
-  const loser = reveal && answered.length ? [...answered].sort((x, y) => x.sync - y.sync)[0] : null
-  return (
-    <div className="text-center">
-      <div className="font-display text-2xl">{meta.prompt || '밸런스 질문'}</div>
-      <div className="mt-4 grid grid-cols-3 gap-3 max-w-2xl mx-auto">
-        {stats.map((s) => (
-          <div key={s.id} className="clay p-3" style={{ background: 'var(--surface)' }}>
-            <div className="font-display" style={{ color: s.color }}>{s.emoji} {s.name}</div>
-            {reveal ? (
-              <>
-                <div className="font-display text-4xl mt-1">{s.sync}%</div>
-                <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>A {s.a} · B {s.b}</div>
-                {loser?.id === s.id && <div className="mt-1 font-bold" style={{ color: 'var(--c-coral)' }}>🍺 벌칙</div>}
-              </>
-            ) : (
-              <div className="mt-2 text-sm" style={{ color: 'var(--ink-soft)' }}>{s.answered}/{s.members.length}</div>
-            )}
-          </div>
-        ))}
-      </div>
-      {!reveal && <p className="mt-3" style={{ color: 'var(--ink-soft)' }}>응답 수집 중…</p>}
-    </div>
-  )
-}
+  const notYet = players.filter((p) => !votedIds.has(p.id))
 
-function AbPlayer({ base, meta, me }) {
-  const mine = useValue(`${base}/choice/${me.id}`)
-  const open = meta.roundStatus === 'open'
-  return (
-    <div className="text-center">
-      <p className="mb-3" style={{ color: 'var(--ink-soft)' }}>{meta.prompt || '팀원과 같은 선택을!'}</p>
-      <div className="grid grid-cols-2 gap-3">
-        {['A', 'B'].map((v, i) => (
-          <button
-            key={v}
-            onClick={() => open && dbSet(`${base}/choice/${me.id}`, v)}
-            disabled={!open}
-            className="h-40 rounded-3xl font-display text-5xl clay-btn"
-            style={mine === v ? { background: i === 0 ? 'var(--c-sky)' : 'var(--c-pink)' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
-          >
-            {v}
-          </button>
-        ))}
-      </div>
-      {mine && <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>선택: {mine}</p>}
-    </div>
-  )
-}
-
-/* ── 래퍼 ── */
-function HostView({ base, meta, players, teams }) {
-  const mode = useValue(`${base}/mode`) || 'person'
   return (
     <div>
-      {meta.roundStatus === 'staged' && (
-        <div className="text-center mb-4">
-          <ModeTabs modes={MODES} value={mode} onChange={(m) => dbSet(`${base}/mode`, m)} />
+      {suggestions.length > 0 && (
+        <div className="clay-inset p-3 mb-3 text-left max-h-40 overflow-y-auto">
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>💡 제안된 질문 ({suggestions.length})</div>
+          <div className="space-y-1">
+            {suggestions.map((s) => (
+              <div key={s.id} className="flex items-center gap-2">
+                <button
+                  onClick={() => writePrompt(s.text)}
+                  className="clay-btn font-display px-2.5 py-1 text-sm shrink-0"
+                  style={{ background: 'var(--c-grape)', color: '#fff' }}
+                >
+                  쓰기
+                </button>
+                <span className="text-sm truncate">{s.text} <span style={{ color: 'var(--ink-soft)' }}>· {s.by}</span></span>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-      {mode === 'person' ? <PersonHost base={base} meta={meta} players={players} /> : <AbHost base={base} meta={meta} teams={teams} />}
+
+      <div className="flex justify-between text-sm gap-2" style={{ color: 'var(--ink-soft)' }}>
+        <span className="font-display text-lg" style={{ color: 'var(--ink)' }}>{meta.prompt || '질문을 입력/선택하세요'}</span>
+        <span className="shrink-0">{total}/{players.length} 지목{!reveal && ' · 진행 중'}</span>
+      </div>
+
+      {!reveal && (
+        <div className="flex items-center justify-center gap-3 mt-2">
+          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>지목 인원</span>
+          <button onClick={() => setMax(-1)} disabled={maxPick <= 1} className="w-9 h-9 rounded-full clay-btn text-xl disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>−</button>
+          <span className="font-display text-xl w-14 text-center">{maxPick}명</span>
+          <button onClick={() => setMax(1)} disabled={maxPick >= MAX_PICK} className="w-9 h-9 rounded-full clay-btn text-xl disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>+</button>
+        </div>
+      )}
+
+      {reveal ? (
+        <>
+          {top && <div className="text-center mt-2"><span style={{ color: 'var(--ink-soft)' }}>최다 </span><span className="font-display text-3xl">{top.nickname}</span></div>}
+          <div className="mt-3 space-y-2 max-w-lg mx-auto">
+            {ranked.filter((r) => r.votes > 0).map((r) => (
+              <div key={r.id} className="flex items-center gap-2">
+                <span className="w-24 truncate text-right font-bold">{r.nickname}</span>
+                <div className="flex-1 h-7 clay-inset overflow-hidden relative">
+                  <div className="absolute inset-y-1 left-1 rounded-full flex items-center justify-end pr-2 text-sm font-bold text-white transition-all duration-500" style={{ width: `calc(${(r.votes / max) * 100}% - 8px)`, background: 'var(--c-grape)' }}>{r.votes}</div>
+                </div>
+              </div>
+            ))}
+            {!top && <p className="text-center py-6" style={{ color: 'var(--ink-soft)' }}>지목이 없어요.</p>}
+          </div>
+        </>
+      ) : (
+        <div className="text-center mt-4">
+          <p className="text-xl font-display" style={{ color: 'var(--ink-soft)' }}>지목 받는 중… 👁 ‘공개’를 누르면 결과</p>
+          {notYet.length > 0 ? (
+            <div className="mt-3">
+              <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>아직 선택 안 함 ({notYet.length})</div>
+              <div className="flex flex-wrap justify-center gap-1.5 max-w-2xl mx-auto">
+                {notYet.map((p) => (<span key={p.id} className="clay-inset px-2.5 py-1 text-sm">{p.nickname}</span>))}
+              </div>
+            </div>
+          ) : (
+            players.length > 0 && <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>전원 선택 완료! ✅</p>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 function PlayerView({ base, meta, players, me }) {
-  const mode = useValue(`${base}/mode`) || 'person'
-  return mode === 'person' ? <PersonPlayer base={base} meta={meta} players={players} me={me} /> : <AbPlayer base={base} meta={meta} me={me} />
+  const mySel = useValue(`${base}/pick/${me.id}`)
+  const maxPick = useValue(`${base}/maxPick`) || 1
+  const open = meta.roundStatus === 'open'
+  const selected = useMemo(() => new Set(selectedIds(mySel)), [mySel])
+  const [sug, setSug] = useState('')
+  const [openSug, setOpenSug] = useState(false)
+  const suggest = () => {
+    if (!sug.trim()) return
+    dbPush(`${base}/suggestions`, { text: sug.trim(), by: me.nickname, ts: Date.now() })
+    setSug('')
+    setOpenSug(false)
+  }
+  const toggle = (tid) => {
+    if (!open) return
+    if (selected.has(tid)) dbUpdate(`${base}/pick/${me.id}`, { [tid]: null })
+    else if (selected.size < maxPick) dbUpdate(`${base}/pick/${me.id}`, { [tid]: true })
+    else if (maxPick === 1) dbUpdate(`${base}/pick/${me.id}`, { [[...selected][0]]: null, [tid]: true })
+  }
+  return (
+    <div>
+      <div className="mb-3">
+        {!openSug ? (
+          <button className="w-full clay-btn font-display py-2.5 text-base" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }} onClick={() => setOpenSug(true)}>
+            💡 질문 제안하기
+          </button>
+        ) : (
+          <div className="flex gap-2">
+            <input
+              value={sug}
+              onChange={(e) => setSug(e.target.value)}
+              placeholder="예: 오늘 제일 웃긴 사람?"
+              className="clay-inset flex-1 px-3 py-2.5"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && suggest()}
+            />
+            <Button onClick={suggest} disabled={!sug.trim()}>제안</Button>
+          </div>
+        )}
+      </div>
+
+      <p className="text-center mb-1" style={{ color: 'var(--ink-soft)' }}>{meta.prompt || '지목할 사람'}</p>
+      {maxPick > 1 && <p className="text-center mb-3 text-sm font-bold" style={{ color: 'var(--c-grape)' }}>최대 {maxPick}명 지목</p>}
+      <div className="grid grid-cols-3 gap-2">
+        {players.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => toggle(p.id)}
+            disabled={!open || (!selected.has(p.id) && selected.size >= maxPick && maxPick > 1)}
+            className="clay-btn py-3 font-display text-base disabled:opacity-50"
+            style={selected.has(p.id) ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
+          >
+            {p.nickname}{p.id === me.id && ' (나)'}
+          </button>
+        ))}
+      </div>
+      {!open && <p className="mt-3 text-center text-sm" style={{ color: 'var(--ink-soft)' }}>공개됨 · 수정 불가 🔒</p>}
+      {open && selected.size > 0 && (
+        <p className="mt-3 text-center text-sm" style={{ color: 'var(--c-mint)' }}>
+          {maxPick > 1 ? `${selected.size}/${maxPick}명 선택` : '지목 완료'} · 변경 가능
+        </p>
+      )}
+    </div>
+  )
 }
 
 export default {
   id: 'pick',
   name: '고르기',
   emoji: '🎯',
-  tagline: '지목 · 밸런스',
+  tagline: '누구를 지목? · 득표 순위',
+  genres: ['mind'],
+  traits: ['anon'],
   promptLabel: '질문 (예: 오늘 제일 취할 것 같은 사람?)',
+  controls: { startLabel: '▶ 시작', resetLabel: '🔄 새 질문' },
+  presets: [
+    // 일반/웃김
+    '오늘 제일 먼저 취할 것 같은 사람?',
+    '술 마시면 제일 시끄러워지는 사람?',
+    '술 취하면 제일 개차반 되는 사람?',
+    '주사가 제일 심할 것 같은 사람?',
+    '여기서 제일 코 골 것 같은 사람?',
+    '자취방이 제일 더러울 것 같은 사람?',
+    '노래방 가면 마이크 안 놓을 사람?',
+    '치킨 시키면 혼자 다 먹을 것 같은 사람?',
+    '술값 계산할 때 슬쩍 화장실 가는 사람?',
+    '취하면 갑자기 철학자 되는 사람?',
+    '연락 제일 안 되는 사람?',
+    '방 청소 절대 안 할 것 같은 사람?',
+    '갑자기 사라져도 아무도 모를 것 같은 사람?',
+    // 민망
+    '몰래 성형했을 것 같은 사람?',
+    '검색 기록 절대 못 보여줄 것 같은 사람?',
+    '흑역사가 제일 많을 것 같은 사람?',
+    '술 마시면 울 것 같은 사람?',
+    '자면서 침 흘릴 것 같은 사람?',
+    '엄마한테 아직 용돈 받을 것 같은 사람?',
+    '전 애인한테 아직 미련 남은 사람?',
+    '첫사랑 아직 못 잊었을 것 같은 사람?',
+    '연애편지 손발 오그라들게 쓸 것 같은 사람?',
+    '방금 몰래 방귀 뀐 것 같은 사람?',
+    // 19금
+    '오늘 이 중에 한 명이랑 자야 한다면?',
+    '여기서 제일 밝힐 것 같은 사람?',
+    '연애하면 제일 밝힐 것 같은 사람?',
+    '첫 경험이 제일 빨랐을 것 같은 사람?',
+    '모텔 제일 자주 갈 것 같은 사람?',
+    '술 취하면 아무한테나 들이댈 것 같은 사람?',
+    '지금 폰에 야한 사진 있을 것 같은 사람?',
+    '전 애인이 제일 많을 것 같은 사람?',
+    '하룻밤 상대로 제일 인기 많을 것 같은 사람?',
+    '침대에서 제일 시끄러울 것 같은 사람?',
+    '가장 은밀한 취향을 가졌을 것 같은 사람?',
+    '옛날에 클럽 죽돌이/죽순이였을 것 같은 사람?',
+    '연상·연하 킬러일 것 같은 사람?',
+    'MT 끝나고 몰래 둘이 연락할 것 같은 사람?',
+    '다음에 커플 될 것 같은 사람?',
+  ],
   HostView,
   PlayerView,
 }

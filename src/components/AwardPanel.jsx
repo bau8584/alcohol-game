@@ -1,21 +1,17 @@
 // Host 정산: 팀 점수 가감 + 개인/팀 쿠폰 지급·차감 (클레이).
 import { useState } from 'react'
 import { addTeamScore, changeItem } from '../lib/actions'
-import { personalItems, teamItems } from '../config/items'
+import { personalItems } from '../config/items'
 import { Card } from './ui'
 
 export default function AwardPanel({ roomId, players, teams }) {
-  const [scope, setScope] = useState('personal')
   const [ownerId, setOwnerId] = useState('')
-  const [itemId, setItemId] = useState(personalItems()[0]?.id || '')
-  const owners = scope === 'team' ? teams : players
-  const items = scope === 'team' ? teamItems() : personalItems()
+  const pass = personalItems()[0] // 패스권 (유일한 쿠폰)
   const sel = 'clay-inset px-3 py-2 text-sm bg-[var(--surface-2)]'
 
   const give = (delta) => {
-    const oid = ownerId || owners[0]?.id
-    const iid = itemId || items[0]?.id
-    if (oid && iid) changeItem(roomId, scope, oid, iid, delta)
+    const oid = ownerId || players[0]?.id
+    if (oid && pass) changeItem(roomId, 'personal', oid, pass.id, delta)
   }
 
   return (
@@ -35,23 +31,18 @@ export default function AwardPanel({ roomId, players, teams }) {
           ))}
         </div>
       </div>
-      <div>
-        <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>쿠폰 지급 / 차감</div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <select value={scope} onChange={(e) => { setScope(e.target.value); setOwnerId(''); setItemId('') }} className={sel}>
-            <option value="personal">개인</option>
-            <option value="team">팀</option>
-          </select>
-          <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={`${sel} max-w-[38%]`}>
-            {owners.map((o) => (<option key={o.id} value={o.id}>{o.nickname || o.name}</option>))}
-          </select>
-          <select value={itemId} onChange={(e) => setItemId(e.target.value)} className={sel}>
-            {items.map((i) => (<option key={i.id} value={i.id}>{i.emoji} {i.name}</option>))}
-          </select>
-          <button onClick={() => give(1)} className="clay-btn px-3 py-2 text-sm" style={{ background: 'var(--c-mint)' }}>+1</button>
-          <button onClick={() => give(-1)} className="clay-btn px-3 py-2 text-sm" style={{ background: 'var(--c-coral)' }}>−1</button>
+      {pass && (
+        <div>
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>{pass.emoji} {pass.name} 지급 / 차감 <span className="opacity-70">· {pass.desc}</span></div>
+          <div className="flex flex-wrap gap-2 items-center">
+            <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={`${sel} max-w-[50%]`}>
+              {players.map((o) => (<option key={o.id} value={o.id}>{o.nickname}</option>))}
+            </select>
+            <button onClick={() => give(1)} className="clay-btn px-3 py-2 text-sm" style={{ background: 'var(--c-mint)' }}>+1</button>
+            <button onClick={() => give(-1)} className="clay-btn px-3 py-2 text-sm" style={{ background: 'var(--c-coral)' }}>−1</button>
+          </div>
         </div>
-      </div>
+      )}
     </Card>
   )
 }

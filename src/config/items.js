@@ -7,32 +7,8 @@ export const ITEMS = [
     name: '패스권',
     emoji: '🛡️',
     scope: 'personal',
-    desc: '벌칙(술)을 1회 방어. 옥션·벌칙 상황에서 소모.',
-    startQty: 2, // 게임 시작 시 개인 기본 지급량
-  },
-  {
-    id: 'chance',
-    name: '찬스권',
-    emoji: '✨',
-    scope: 'personal',
-    desc: '문제 힌트 요청 또는 재도전 1회.',
-    startQty: 1,
-  },
-  {
-    id: 'steal',
-    name: '훔치기권',
-    emoji: '🥷',
-    scope: 'personal',
-    desc: '다른 사람의 패스권 1개를 강탈.',
-    startQty: 0,
-  },
-  {
-    id: 'teamShield',
-    name: '팀 방패',
-    emoji: '🏰',
-    scope: 'team',
-    desc: '팀 전체 벌칙을 1회 무효화. 팀원 누구나 사용.',
-    startQty: 1,
+    desc: '술(벌칙)을 1회 면제. 마셔야 할 때 폰에서 보여주고 진행자가 차감.',
+    startQty: 1, // 게임 시작 시 개인 기본 지급량
   },
 ]
 
