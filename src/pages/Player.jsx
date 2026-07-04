@@ -5,7 +5,6 @@ import { gameById } from '../games/registry'
 import { joinRoom, setPlayerTeam, playBase } from '../lib/actions'
 import { ensurePlayerId, getSession, saveSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
-import { TEAMS } from '../config/teams'
 import ItemBar from '../components/ItemBar'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
@@ -56,14 +55,11 @@ export default function Player() {
           <h2 className="font-display text-xl mb-1">{me.nickname} 님, 팀 선택!</h2>
           <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>진행자가 나중에 조정할 수 있어요.</p>
           <div className="grid gap-3">
-            {TEAMS.map((t) => {
-              const count = teams.find((x) => x.id === t.id)?.members.length || 0
-              return (
-                <button key={t.id} onClick={() => setPlayerTeam(roomId, playerId, t.id)} className="clay-btn py-4 font-display text-xl" style={{ background: t.color }}>
-                  {t.emoji} {t.name} <span className="opacity-80 text-base">({count}명)</span>
-                </button>
-              )
-            })}
+            {teams.map((t) => (
+              <button key={t.id} onClick={() => setPlayerTeam(roomId, playerId, t.id)} className="clay-btn py-4 font-display text-xl" style={{ background: t.color, color: '#fff' }}>
+                {t.name} <span className="opacity-80 text-base">({t.members.length}명)</span>
+              </button>
+            ))}
           </div>
         </Card>
       </Center>
@@ -78,7 +74,7 @@ export default function Player() {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <BackButton label="" />
-          <div className="font-display text-lg truncate">{me.nickname} <span className="text-sm" style={{ color: myTeam?.color }}>{myTeam?.emoji} {myTeam?.name}</span></div>
+          <div className="font-display text-lg truncate">{me.nickname} <span className="text-sm" style={{ color: myTeam?.color }}>{myTeam?.name}</span></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {game && <PhaseTag status={meta.roundStatus} />}

@@ -14,8 +14,9 @@ import faces from './faces.jsx'
 import charades from './decks/charades.js'
 import wordrelay from './decks/wordrelay.js'
 import category from './decks/category.js'
+import roulette from './roulette.jsx'
 
-export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category]
+export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 
@@ -30,6 +31,7 @@ export const GENRES = [
 
 export const TRAITS = [
   { id: 'team', label: '팀전', emoji: '👥' },
+  { id: 'solo', label: '개인전', emoji: '🧍' },
   { id: 'anon', label: '익명', emoji: '🙈' },
 ]
 

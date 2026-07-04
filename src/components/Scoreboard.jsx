@@ -5,11 +5,11 @@ export default function Scoreboard({ teams }) {
   const tItems = teamItems()
   const max = Math.max(1, ...teams.map((t) => t.score))
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
       {teams.map((t) => (
         <div key={t.id} className="clay p-4" style={{ background: 'var(--surface)' }}>
           <div className="flex items-center justify-between">
-            <span className="font-display text-xl" style={{ color: t.color }}>{t.emoji} {t.name}</span>
+            <span className="font-display text-xl truncate" style={{ color: t.color }}>{t.name}</span>
             <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>{t.members.length}명</span>
           </div>
           <div className="font-display text-4xl mt-1">{t.score}</div>

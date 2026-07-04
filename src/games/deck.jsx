@@ -70,7 +70,7 @@ export function createDeckGame(config) {
     const deck = subsetByKey(subset)
     const cards = deck?.cards || []
     const total = order?.length || 0
-    const cur = cards[order[idx]]
+    const cur = cards[order?.[idx]]
     const atEnd = idx >= total - 1
 
     const go = (d) => {
@@ -201,7 +201,7 @@ export function createDeckGame(config) {
     const deck = subsetByKey(subset)
     const cards = deck?.cards || []
     const total = order?.length || 0
-    const cur = cards[order[idx]]
+    const cur = cards[order?.[idx]]
     const atEnd = idx >= total - 1
     const next = () => {
       const ni = Math.min(total - 1, idx + 1)
@@ -229,6 +229,8 @@ export function createDeckGame(config) {
     name: config.name,
     emoji: config.emoji,
     tagline: config.tagline,
+    genres: config.genres,
+    traits: config.traits,
     controls: { mode: 'self' },
     HostView,
     PlayerView,

@@ -3,13 +3,14 @@
 import { useMemo, useState } from 'react'
 import { useValue, dbSet, dbPush, dbTransaction, SERVER_TS, toList } from '../lib/db'
 
-// 동시 터치(충돌) 판정 난이도 3단계 — 이 간격(ms) 안에 잡힌 연속 번호 = 충돌
+// 동시 터치(충돌) 판정 3단계 — 연속 번호 두 사람의 시간차가 이 창(ms)보다 작으면 둘 다 벌칙.
+// 창이 넓을수록 더 많이 걸린다 → 느슨(좁음·관대) < 보통 < 빡빡(넓음·빡셈)
 const LEVELS = [
-  { id: 'strict', label: '빡빡', ms: 150, emoji: '🔥' },
-  { id: 'normal', label: '보통', ms: 300, emoji: '🙂' },
-  { id: 'loose', label: '느슨', ms: 500, emoji: '🍺' },
+  { id: 'loose', label: '느슨', ms: 100, emoji: '🍺' },
+  { id: 'normal', label: '보통', ms: 180, emoji: '🙂' },
+  { id: 'strict', label: '빡빡', ms: 300, emoji: '🔥' },
 ]
-const DEFAULT_MS = 300
+const DEFAULT_MS = 180
 
 function analyze(tapsRaw, clashMs) {
   const taps = toList(tapsRaw)
@@ -116,7 +117,7 @@ export default {
   emoji: '🔢',
   tagline: '동시 터치 자동판정',
   genres: ['physical', 'mind'],
-  traits: [],
+  traits: ['solo'],
   controls: { reveal: false, startLabel: '▶ 시작', resetLabel: '🔄 새 게임', resetArms: true },
   HostView,
   PlayerView,

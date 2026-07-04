@@ -3,8 +3,8 @@ import { useParams } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { GAMES, gameById, GENRES, TRAITS, genreById, traitById } from '../games/registry'
 import { checkHostPin, startGame, setRoundStatus, setPrompt, newRound, endGame, resetRoom, playBase, addTeamScore, clearSeeds, setPlayerTeam, kickPlayer } from '../lib/actions'
-import { TEAMS } from '../config/teams'
 import Scoreboard from '../components/Scoreboard'
+import TeamSettings from '../components/TeamSettings'
 import AwardPanel from '../components/AwardPanel'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
@@ -104,7 +104,9 @@ export default function Host() {
 
       <Scoreboard teams={teams} />
 
-      <PlayerManager roomId={roomId} players={players} />
+      {!game && <TeamSettings roomId={roomId} teams={teams} />}
+
+      <PlayerManager roomId={roomId} players={players} teams={teams} />
 
       {!game ? (
         <Card>
@@ -233,7 +235,7 @@ function Center({ children }) {
 }
 
 // 참가자 관리: 팀 재배정 + 강퇴 (접었다 펴기). 게임 중에도 항상 접근 가능.
-function PlayerManager({ roomId, players }) {
+function PlayerManager({ roomId, players, teams }) {
   const [open, setOpen] = useState(false)
   return (
     <Card>
@@ -250,15 +252,15 @@ function PlayerManager({ roomId, players }) {
                 {p.seed && <span className="ml-1 text-xs" style={{ color: 'var(--ink-soft)' }}>(테스트)</span>}
               </span>
               <div className="flex gap-1">
-                {TEAMS.map((t) => (
+                {teams.map((t) => (
                   <button
                     key={t.id}
                     onClick={() => setPlayerTeam(roomId, p.id, t.id)}
-                    className="clay-btn px-2.5 py-1 text-base"
+                    className="clay-btn px-2.5 py-1 text-sm"
                     style={p.teamId === t.id ? { background: t.color, color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
                     title={`${t.name} 팀으로`}
                   >
-                    {t.emoji}
+                    {t.name}
                   </button>
                 ))}
               </div>
@@ -291,7 +293,7 @@ function WinnerAward({ roomId, teams }) {
           className="clay-btn px-3 py-2 font-display"
           style={{ background: t.color, color: '#fff' }}
         >
-          {t.emoji} {t.name} +{amt}
+          {t.name} +{amt}
         </button>
       ))}
       <span className="mx-1 shrink-0" style={{ color: 'var(--ink-soft)' }}>·</span>

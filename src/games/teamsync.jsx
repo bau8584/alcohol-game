@@ -34,10 +34,10 @@ function HostView({ base, meta, players, teams }) {
   return (
     <div className="text-center">
       <div className="font-display text-2xl">{meta.prompt || '우리 팀에서 ○○할 사람?'}</div>
-      <div className="mt-4 grid grid-cols-3 gap-3 max-w-2xl mx-auto">
+      <div className="mt-4 grid gap-3 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
         {stats.map((s) => (
           <div key={s.id} className="clay p-3" style={{ background: 'var(--surface)' }}>
-            <div className="font-display" style={{ color: s.color }}>{s.emoji} {s.name}</div>
+            <div className="font-display truncate" style={{ color: s.color }}>{s.name}</div>
             {reveal ? (
               <>
                 <div className="font-display text-4xl mt-1">{s.sync}%</div>
@@ -65,7 +65,7 @@ function PlayerView({ base, meta, me, myTeam }) {
   return (
     <div className="text-center">
       <p className="mb-1" style={{ color: 'var(--ink-soft)' }}>{meta.prompt || '우리 팀에서 지목'}</p>
-      <p className="mb-3 text-sm" style={{ color: myTeam?.color }}>{myTeam?.emoji} {myTeam?.name} 팀원 중 1명</p>
+      <p className="mb-3 text-sm" style={{ color: myTeam?.color }}>{myTeam?.name} 팀원 중 1명</p>
       <div className="grid grid-cols-2 gap-2">
         {members.map((p) => (
           <button

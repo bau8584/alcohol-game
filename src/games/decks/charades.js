@@ -65,7 +65,7 @@ export default createDeckGame({
   emoji: '🎭',
   tagline: '연기자 폰에 정답 · 몸으로 설명',
   genres: ['party'],
-  traits: [],
+  traits: ['team'],
   target: 'actor',
   timer: 60,
   subsets: [

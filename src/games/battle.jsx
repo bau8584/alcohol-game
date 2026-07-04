@@ -120,12 +120,16 @@ function HostView({ base, meta, players, teams }) {
       {/* 질문 편집 + 참가자 제안 큐 (대기 중에만) */}
       {staged && (
         <div className="mt-4 max-w-lg mx-auto text-left">
-          <div className="flex gap-2 items-center">
-            <input value={ea} onChange={(e) => writeA(e.target.value)} placeholder="A (예: 부먹)" className="clay-inset flex-1 px-3 py-2 text-center" />
-            <span className="font-display" style={{ color: 'var(--ink-soft)' }}>vs</span>
-            <input value={eb} onChange={(e) => writeB(e.target.value)} placeholder="B (예: 찍먹)" className="clay-inset flex-1 px-3 py-2 text-center" />
-            <button onClick={() => rollFrom(PAIRS)} className="clay-btn px-3 text-2xl shrink-0" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲</button>
-            <button onClick={() => rollFrom(ADULT_PAIRS)} className="clay-btn px-3 text-2xl shrink-0" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲</button>
+          <div className="space-y-2">
+            <div className="flex gap-2 items-center">
+              <input value={ea} onChange={(e) => writeA(e.target.value)} placeholder="A (예: 부먹)" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
+              <span className="font-display" style={{ color: 'var(--ink-soft)' }}>vs</span>
+              <input value={eb} onChange={(e) => writeB(e.target.value)} placeholder="B (예: 찍먹)" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
+            </div>
+            <div className="flex gap-2 justify-center">
+              <button onClick={() => rollFrom(PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲</button>
+              <button onClick={() => rollFrom(ADULT_PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+            </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
             <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>💡 참가자 제안 ({suggestions.length})</div>
@@ -153,13 +157,13 @@ function HostView({ base, meta, players, teams }) {
           {target ? (
             <>
               <p className="mt-2 font-bold" style={{ color: 'var(--c-coral)' }}>{modeLabel}는 <b>{target === 'A' ? q?.a || 'A' : q?.b || 'B'}</b> · {modeLabel}가 가장 많은 팀이 벌칙! 🍺</p>
-              <div className="mt-3 grid grid-cols-3 gap-3 max-w-2xl mx-auto">
+              <div className="mt-3 grid gap-3 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
                 {teams.map((t) => {
                   const n = byTeam[t.id] || 0
                   const top = n > 0 && n === topN
                   return (
                     <div key={t.id} className="clay p-3" style={{ background: top ? 'var(--c-coral)' : 'var(--surface)', color: top ? '#fff' : 'var(--ink)' }}>
-                      <div className="font-display" style={{ color: top ? '#fff' : t.color }}>{t.emoji} {t.name}</div>
+                      <div className="font-display" style={{ color: top ? '#fff' : t.color }}>{t.name}</div>
                       <div className="font-display text-4xl mt-1">{n}명</div>
                       {top && <div className="mt-1 font-bold">🍺 최다 {modeLabel}!</div>}
                     </div>
@@ -250,7 +254,7 @@ export default {
   emoji: '⚖️',
   tagline: '소수파 vs 다수파 · 질문 제안',
   genres: ['mind'],
-  traits: [],
+  traits: ['solo'],
   HostView,
   PlayerView,
 }

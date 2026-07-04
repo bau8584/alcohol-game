@@ -95,7 +95,7 @@ function HostView({ base, players, teams }) {
           return (
             <div key={t.id}>
               <div className="flex justify-between font-bold text-sm" style={{ color: t.color }}>
-                <span>{t.emoji} {t.name}</span>
+                <span>{t.name}</span>
                 <span>평균 {st.avg.toFixed(1)} <span className="opacity-70 font-normal">({st.total}회 ÷ {st.n}명)</span></span>
               </div>
               <div className="mt-1 h-9 clay-inset relative overflow-hidden">

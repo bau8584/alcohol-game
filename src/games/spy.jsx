@@ -97,20 +97,24 @@ function HostView({ base, meta, players, teams }) {
 
   return (
     <div className="text-center">
-      <div className="flex gap-2 justify-center max-w-md mx-auto">
-        <input value={real} onChange={(e) => setReal(e.target.value)} placeholder="진짜 제시어" className="clay-inset flex-1 px-3 py-2 text-center" />
-        <input value={fake} onChange={(e) => setFake(e.target.value)} placeholder="가짜 제시어" className="clay-inset flex-1 px-3 py-2 text-center" />
-        <button onClick={() => rollFrom(PAIRS)} className="clay-btn px-3 text-2xl shrink-0" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲</button>
-        <button onClick={() => rollFrom(ADULT_PAIRS)} className="clay-btn px-3 text-2xl shrink-0" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲</button>
+      <div className="max-w-md mx-auto space-y-2">
+        <div className="flex gap-2">
+          <input value={real} onChange={(e) => setReal(e.target.value)} placeholder="진짜 제시어" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
+          <input value={fake} onChange={(e) => setFake(e.target.value)} placeholder="가짜 제시어" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
+        </div>
+        <div className="flex gap-2 justify-center">
+          <button onClick={() => rollFrom(PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲</button>
+          <button onClick={() => rollFrom(ADULT_PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+        </div>
       </div>
 
       {/* 팀별 스파이 인원 */}
-      <div className="mt-3 grid grid-cols-3 gap-2 max-w-xl mx-auto">
+      <div className="mt-3 grid gap-2 max-w-xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
         {teams.map((t) => {
           const maxN = Math.max(0, t.members.length - 1)
           return (
             <div key={t.id} className="clay-inset p-2">
-              <div className="font-display" style={{ color: t.color }}>{t.emoji} {t.name}</div>
+              <div className="font-display truncate" style={{ color: t.color }}>{t.name}</div>
               <div className="flex items-center justify-center gap-2 mt-1">
                 <button onClick={() => setCount(t.id, -1, maxN)} disabled={cnt(t.id) <= 0} className="w-8 h-8 rounded-full clay-btn text-lg disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>−</button>
                 <span className="font-display text-xl w-8">{Math.min(cnt(t.id), maxN)}</span>
@@ -126,12 +130,12 @@ function HostView({ base, meta, players, teams }) {
       {assign && (
         <div className="mt-4">
           <p style={{ color: 'var(--ink-soft)' }}>진짜 <b style={{ color: 'var(--ink)' }}>{assign.realWord}</b> · 가짜 <b style={{ color: 'var(--ink)' }}>{assign.fakeWord}</b></p>
-          <div className="mt-2 grid grid-cols-3 gap-2 max-w-xl mx-auto">
+          <div className="mt-2 grid gap-2 max-w-xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
             {teams.map((t) => {
               const spyNames = t.members.filter((m) => assign.spyIds?.[m.id]).map((m) => m.nickname)
               return (
                 <div key={t.id} className="clay-inset p-2 text-sm">
-                  <div className="font-display" style={{ color: t.color }}>{t.emoji} {t.name}</div>
+                  <div className="font-display truncate" style={{ color: t.color }}>{t.name}</div>
                   <div className="mt-1" style={{ color: 'var(--c-coral)' }}>🕵️ {spyNames.length ? spyNames.join(', ') : '없음'}</div>
                 </div>
               )

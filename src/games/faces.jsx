@@ -79,7 +79,7 @@ function HostView({ base, players }) {
     )
   }
 
-  const cur = cards[order[idx]]
+  const cur = cards[order?.[idx]]
   // 이번 사진에서 정답 기회가 있는 순위 (won=판제외, failed=이번사진탈락 제외)
   const ranked = toList(buzzRaw)
     .filter((b) => typeof b.ts === 'number' && !won?.[b.id] && !failed?.[b.id])
@@ -99,9 +99,9 @@ function HostView({ base, players }) {
         )}
       </div>
 
-      {/* 인물 사진 */}
-      <div className="relative mx-auto max-w-md">
-        <img src={cur?.url} alt="" className="mx-auto rounded-2xl object-contain w-full max-h-[46vh] clay-inset" />
+      {/* 인물 사진 (데스크톱에서 크게) */}
+      <div className="relative mx-auto max-w-xl md:max-w-3xl">
+        <img src={cur?.url} alt="" className="mx-auto rounded-2xl object-contain w-full max-h-[52vh] md:max-h-[70vh] clay-inset" />
         {revealed && (
           <div className="absolute inset-x-0 bottom-0 py-3 rounded-b-2xl font-display text-3xl animate-pop" style={{ background: 'rgba(0,0,0,0.6)', color: '#fff' }}>
             {cur?.answer}
@@ -222,7 +222,7 @@ export default {
   emoji: '🕵️',
   tagline: '인물 맞추기 · 선착순 · 승자 제외',
   genres: ['physical', 'brain'],
-  traits: [],
+  traits: ['solo'],
   controls: { mode: 'self' },
   HostView,
   PlayerView,

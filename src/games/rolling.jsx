@@ -101,7 +101,7 @@ export default {
   emoji: '💌',
   tagline: '익명 편지 · 공개는 진행자가',
   genres: ['party'],
-  traits: ['anon'],
+  traits: ['anon', 'solo'],
   controls: { start: false }, // 대상 지목이 곧 시작 → 시작 버튼 없음 (공개/새 라운드만)
   HostView,
   PlayerView,

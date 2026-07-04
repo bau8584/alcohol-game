@@ -286,7 +286,7 @@ export default {
   emoji: '👑',
   tagline: '익명 질문 · 진선미 심사 · 질문은 벌칙으로!',
   genres: ['party'],
-  traits: ['anon'],
+  traits: ['anon', 'solo'],
   controls: { prompt: false, reveal: false, mode: 'reset', resetLabel: '🔄 새 질문' },
   HostView,
   PlayerView,

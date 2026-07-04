@@ -44,7 +44,7 @@ export function TeamBadge({ teamId, className = '' }) {
       className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-bold ${className}`}
       style={{ background: t.color, color: '#fff' }}
     >
-      {t.emoji} {t.name}
+      {t.name}
     </span>
   )
 }

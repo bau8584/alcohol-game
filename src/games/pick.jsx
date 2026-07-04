@@ -170,7 +170,7 @@ export default {
   emoji: '🎯',
   tagline: '누구를 지목? · 득표 순위',
   genres: ['mind'],
-  traits: ['anon'],
+  traits: ['anon', 'solo'],
   promptLabel: '질문 (예: 오늘 제일 취할 것 같은 사람?)',
   controls: { startLabel: '▶ 시작', resetLabel: '🔄 새 질문' },
   presets: [

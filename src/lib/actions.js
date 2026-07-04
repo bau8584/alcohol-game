@@ -7,11 +7,18 @@ import {
   dbTransaction,
   dbRemove,
 } from './db'
-import { TEAMS } from '../config/teams'
+import { DEFAULT_TEAMS, TEAM_COLORS } from '../config/teams'
 import { initialItems } from '../config/items'
 import { ROSTER } from '../config/roster'
 
 const genRoomId = () => Math.random().toString().slice(2, 8) // 6자리 숫자 방코드
+
+// 기본 팀 시드 (이름·색·순서·점수·재화)
+const seedTeams = () =>
+  DEFAULT_TEAMS.reduce((acc, t, i) => {
+    acc[t.id] = { name: t.name, color: t.color, order: i, score: 0, items: initialItems('team') }
+    return acc
+  }, {})
 
 // ── 테스트 운영용 고정 방 ────────────────────────
 export const SB_ROOM_ID = 'SB'
@@ -19,10 +26,7 @@ export const SB_HOST_PIN = '4321'
 
 // 방 문서를 새로 씀 (id 지정)
 async function writeNewRoom(roomId, hostPin) {
-  const teams = TEAMS.reduce((acc, t) => {
-    acc[t.id] = { score: 0, items: initialItems('team') }
-    return acc
-  }, {})
+  const teams = seedTeams()
   await dbSet(roomPath(roomId), {
     meta: {
       hostPin: String(hostPin || ''),
@@ -154,13 +158,51 @@ export const playBase = (roomId, roundSeq, gameId) =>
 // 방 전체 삭제 (호스트 종료)
 export const destroyRoom = (roomId) => dbRemove(roomPath(roomId))
 
-// ── 방 초기화 (참가자·점수·재화·진행상태 전부 리셋, 방/PIN 은 유지) ──
+// ── 팀 편집 (호스트) ─────────────────────────────
+export const setTeamName = (roomId, teamId, name) =>
+  dbUpdate(roomPath(roomId, `teams/${teamId}`), { name })
+
+export const setTeamColor = (roomId, teamId, color) =>
+  dbUpdate(roomPath(roomId, `teams/${teamId}`), { color })
+
+export async function addTeam(roomId) {
+  const teams = (await dbGet(roomPath(roomId, 'teams'))) || {}
+  const list = Object.values(teams)
+  const used = new Set(list.map((t) => t.color))
+  const color = TEAM_COLORS.find((c) => !used.has(c)) || TEAM_COLORS[list.length % TEAM_COLORS.length]
+  const order = list.length ? Math.max(...list.map((t) => t.order ?? 0)) + 1 : 0
+  const id = 't' + Math.random().toString(36).slice(2, 7)
+  await dbUpdate(roomPath(roomId), {
+    [`teams/${id}`]: { name: `${order + 1}팀`, color, order, score: 0, items: initialItems('team') },
+  })
+  return id
+}
+
+export async function removeTeam(roomId, teamId) {
+  const players = (await dbGet(roomPath(roomId, 'players'))) || {}
+  const updates = { [`teams/${teamId}`]: null }
+  // 그 팀 소속 참가자는 팀 해제 → 다시 선택하게
+  Object.entries(players).forEach(([pid, p]) => {
+    if (p?.teamId === teamId) updates[`players/${pid}/teamId`] = null
+  })
+  await dbUpdate(roomPath(roomId), updates)
+}
+
+// ── 방 초기화 (참가자·점수·재화·진행상태 리셋. 팀 구성[이름·색·개수]은 유지) ──
 export async function resetRoom(roomId) {
   const hostPin = await dbGet(roomPath(roomId, 'meta/hostPin'))
-  const teams = TEAMS.reduce((acc, t) => {
-    acc[t.id] = { score: 0, items: initialItems('team') }
-    return acc
-  }, {})
+  const existing = (await dbGet(roomPath(roomId, 'teams'))) || {}
+  // 이름이 있는 유효한 팀 구성이면 유지, 아니면(구버전/빈 방) 기본팀으로 재시드
+  const hasNamed = Object.keys(existing).length && Object.values(existing).every((t) => t?.name)
+  let teams
+  if (hasNamed) {
+    teams = {}
+    Object.entries(existing).forEach(([id, t]) => {
+      teams[id] = { name: t.name, color: t.color, order: t.order ?? 0, score: 0, items: initialItems('team') }
+    })
+  } else {
+    teams = seedTeams()
+  }
   await dbUpdate(roomPath(roomId), {
     players: null, // 모든 참가자 제거
     play: null, // 모든 게임 상호작용 데이터 제거

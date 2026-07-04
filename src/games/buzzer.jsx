@@ -80,7 +80,7 @@ export default {
   emoji: '🎵',
   tagline: '선착순 부저',
   genres: ['physical'],
-  traits: [],
+  traits: ['solo'],
   controls: { prompt: false, reveal: false, mode: 'reset' },
   HostView,
   PlayerView,
