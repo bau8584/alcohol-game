@@ -41,12 +41,20 @@ function assignNumbers(players, kingId) {
 /* ═══════════════ 호스트 (번호는 절대 표시 안 함) ═══════════════ */
 function HostView({ base, players }) {
   const kingId = useValue(`${base}/kingId`)
+  const numbers = useValue(`${base}/numbers`)
+  const revealed = useValue(`${base}/revealed`)
   const king = players.find((p) => p.id === kingId)
   const numberCount = players.filter((p) => p.id !== kingId).length
 
+  // 번호 → 사람 매핑 (공개용, 번호순 정렬)
+  const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+  const roster = numbers
+    ? Object.entries(numbers).map(([pid, n]) => ({ n, name: byId[pid]?.nickname || '?' })).sort((a, b) => a.n - b.n)
+    : []
+
   const setKing = (kid) => dbSet(base, { kingId: kid, numbers: assignNumbers(players, kid) })
   const randomKing = () => { if (players.length) setKing(players[Math.floor(Math.random() * players.length)].id) }
-  const reshuffle = () => kingId && dbSet(`${base}/numbers`, assignNumbers(players, kingId))
+  const reshuffle = () => { if (kingId) { dbSet(`${base}/numbers`, assignNumbers(players, kingId)); dbSet(`${base}/revealed`, false) } }
 
   if (players.length < 2) {
     return <p className="text-center py-10" style={{ color: 'var(--ink-soft)' }}>2명 이상 있어야 시작할 수 있어요. 👑</p>
@@ -77,6 +85,24 @@ function HostView({ base, players }) {
         <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>번호는 각자 폰에만! 왕·이 화면엔 안 보여요.</p>
       </div>
       <p className="mt-4 font-display text-lg">왕이 “○번과 △번!” 하고 명령하세요 📣</p>
+
+      {/* 번호 공개 — 끝나고 누가 몇 번이었는지 밝히기 */}
+      <div className="mt-4">
+        <Button variant={revealed ? 'ghost' : 'warn'} onClick={() => dbSet(`${base}/revealed`, !revealed)}>
+          {revealed ? '🙈 번호 다시 숨기기' : '👁 번호 공개 (누가 몇 번?)'}
+        </Button>
+        {revealed && (
+          <div className="mt-3 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
+            {roster.map((r) => (
+              <span key={r.n} className="clay-inset px-3 py-1.5 font-bold animate-pop">
+                <span className="font-display" style={{ color: 'var(--c-grape)' }}>{r.n}</span>. {r.name}
+              </span>
+            ))}
+            {!roster.length && <p className="py-2" style={{ color: 'var(--ink-soft)' }}>배정된 번호가 없어요.</p>}
+          </div>
+        )}
+      </div>
+
       <div className="mt-4 flex flex-wrap justify-center gap-2">
         <Button variant="primary" onClick={randomKing}>🎲 새 왕 뽑기</Button>
         <Button variant="ghost" onClick={reshuffle}>🔀 번호만 다시 섞기</Button>
