@@ -112,6 +112,7 @@ export default function Player() {
           <ThemeSwitcher />
         </div>
       </div>
+      <TeamScores teams={teams} myTeamId={myTeam?.id} />
       <ItemBar me={me} team={myTeam} />
       <div className="pt-2">
         {game && base ? (
@@ -124,6 +125,32 @@ export default function Player() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// 참가자용 팀 점수 스트립 (읽기 전용) — 순위 메달 + 내 팀 강조
+const MEDALS = ['🥇', '🥈', '🥉']
+function TeamScores({ teams, myTeamId }) {
+  const ranked = [...teams].sort((a, b) => b.score - a.score)
+  const rankOf = (t) => teams.filter((x) => x.score > t.score).length
+  return (
+    <div className="clay p-2 flex flex-wrap items-center justify-center gap-1.5" style={{ background: 'var(--surface)' }}>
+      {ranked.map((t) => {
+        const medal = t.score > 0 ? MEDALS[rankOf(t)] : null
+        const mine = t.id === myTeamId
+        return (
+          <span
+            key={t.id}
+            className="px-2.5 py-1 rounded-xl text-sm font-bold flex items-center gap-1"
+            style={mine ? { background: t.color, color: '#fff' } : { background: 'var(--surface-2)' }}
+          >
+            {medal && <span>{medal}</span>}
+            <span style={{ color: mine ? '#fff' : t.color }}>{t.name}</span>
+            <span className="tabular-nums" style={{ color: mine ? '#fff' : 'var(--ink)' }}>{t.score}</span>
+          </span>
+        )
+      })}
     </div>
   )
 }

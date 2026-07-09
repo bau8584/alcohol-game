@@ -1,5 +1,5 @@
-// 밸런스 배틀 — 'A vs B' 소신 투표. 다수/소수 중 누가 벌칙인지는 공개 순간 시스템이 랜덤 결정.
-// 참가자는 눈치보지 말고 소신대로 고르고, 결과는 운(시스템)에 맡긴다. 대상 진영 최다 팀이 벌칙.
+// 밸런스 배틀 — 'A vs B' 소신 투표. 2단계 공개: ① 밸런스 현황(표수)만 먼저 공개
+// → ② 진행자가 '소수파/다수파' 중 벌칙 대상을 직접 골라야 벌칙 팀이 드러난다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useValue, dbSet, dbPush, toList } from '../lib/db'
 import { Button } from '../components/ui'
@@ -68,11 +68,6 @@ function HostView({ base, meta, players, teams }) {
     return { a, b, answered: a + b, choice, byId }
   }, [raw, players])
 
-  // 공개 순간, 아직 안 정해졌으면 다수/소수 랜덤 결정 (호스트가 1회 기록 → 모두 공유)
-  useEffect(() => {
-    if (reveal && !verdict) dbSet(`${base}/verdict`, Math.random() < 0.5 ? 'minority' : 'majority')
-  }, [reveal, verdict, base])
-
   const verdictLabel = verdict === 'minority' ? '소수' : verdict === 'majority' ? '다수' : ''
   const target = !verdict || a === b || answered === 0 ? null : verdict === 'minority' ? (a < b ? 'A' : 'B') : (a > b ? 'A' : 'B')
 
@@ -91,7 +86,7 @@ function HostView({ base, meta, players, teams }) {
         {q?.a || q?.b ? <>{q.a || '?'} <span style={{ color: 'var(--ink-soft)' }}>vs</span> {q.b || '?'}</> : <span style={{ color: 'var(--ink-soft)' }}>질문을 정하세요</span>}
       </div>
       <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>
-        {answered}/{players.length} 응답 {reveal ? '· 공개' : staged ? '· 대기' : '· 소신껏! 벌칙은 공개 때 랜덤 🎲'}
+        {answered}/{players.length} 응답 {reveal ? '· 공개' : staged ? '· 대기' : '· 소신껏 골라주세요!'}
       </div>
 
       {staged && (
@@ -125,15 +120,36 @@ function HostView({ base, meta, players, teams }) {
 
       {reveal && (
         <>
-          {verdict && <div className="mt-4 font-display text-3xl animate-pop" style={{ color: 'var(--c-coral)' }}>🎲 운명의 선택: {verdictLabel}파 벌칙!</div>}
-          <div className="mt-3 flex items-center justify-center gap-6 font-display text-4xl">
+          {/* ① 밸런스 현황 — 표수만 먼저 공개 (벌칙 대상 선택 전엔 색 강조 없음) */}
+          <div className="mt-4 flex items-center justify-center gap-6 font-display text-4xl">
             <span style={{ color: target === 'A' ? 'var(--c-coral)' : 'var(--c-sky)' }}>{q?.a || 'A'} {a}</span>
             <span style={{ color: 'var(--ink-soft)' }}>vs</span>
             <span style={{ color: target === 'B' ? 'var(--c-coral)' : 'var(--c-pink)' }}>{q?.b || 'B'} {b}</span>
           </div>
-          {target ? (
+
+          {answered === 0 ? (
+            <p className="mt-4" style={{ color: 'var(--ink-soft)' }}>응답이 없어요.</p>
+          ) : a === b ? (
+            <p className="mt-4 font-display text-2xl" style={{ color: 'var(--ink-soft)' }}>동수! 벌칙 없음 🤝</p>
+          ) : !verdict ? (
+            /* ② 벌칙 대상 결정 — 진행자가 소수/다수 직접 선택 */
+            <div className="mt-5">
+              <p className="font-display text-xl mb-1">누구에게 벌칙을 줄까요?</p>
+              <p className="text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>현황을 보고 진행자가 결정하세요</p>
+              <div className="flex gap-3 justify-center flex-wrap">
+                <button onClick={() => dbSet(`${base}/verdict`, 'minority')} className="clay-btn font-display px-6 py-4 text-xl" style={{ background: 'var(--c-grape)', color: '#fff' }}>
+                  🔻 소수파 벌칙<div className="text-sm opacity-90 mt-0.5">{a < b ? q?.a || 'A' : q?.b || 'B'} ({Math.min(a, b)}명)</div>
+                </button>
+                <button onClick={() => dbSet(`${base}/verdict`, 'majority')} className="clay-btn font-display px-6 py-4 text-xl" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+                  🔺 다수파 벌칙<div className="text-sm opacity-90 mt-0.5">{a > b ? q?.a || 'A' : q?.b || 'B'} ({Math.max(a, b)}명)</div>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ③ 결과 공개 */
             <>
-              <p className="mt-2 font-bold" style={{ color: 'var(--c-coral)' }}>{verdictLabel}파는 <b>{target === 'A' ? q?.a || 'A' : q?.b || 'B'}</b> · 이걸 고른 사람 최다 팀이 벌칙! 🍺</p>
+              <div className="mt-4 font-display text-3xl animate-pop" style={{ color: 'var(--c-coral)' }}>🍺 {verdictLabel}파 벌칙!</div>
+              <p className="mt-1 font-bold" style={{ color: 'var(--c-coral)' }}>{verdictLabel}파 = <b>{target === 'A' ? q?.a || 'A' : q?.b || 'B'}</b> · 이걸 고른 사람 최다 팀이 벌칙!</p>
               <div className="mt-3 grid gap-3 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
                 {teams.map((t) => {
                   const n = byTeam[t.id] || 0
@@ -147,14 +163,13 @@ function HostView({ base, meta, players, teams }) {
                   )
                 })}
               </div>
+              <button onClick={() => dbSet(`${base}/verdict`, null)} className="clay-btn mt-4 px-4 py-2 text-sm" style={{ background: 'var(--surface-2)', color: 'var(--ink-soft)' }}>↩ 다시 고르기</button>
             </>
-          ) : (
-            verdict && <p className="mt-4 font-display text-2xl" style={{ color: 'var(--ink-soft)' }}>동수! 벌칙 없음 🤝</p>
           )}
         </>
       )}
 
-      {meta.roundStatus === 'open' && <p className="mt-6" style={{ color: 'var(--ink-soft)' }}>응답 수집 중… 소신껏 골라! 다수·소수는 랜덤 🎲</p>}
+      {meta.roundStatus === 'open' && <p className="mt-6" style={{ color: 'var(--ink-soft)' }}>응답 수집 중… 소신껏 골라주세요!</p>}
     </div>
   )
 }
@@ -177,7 +192,7 @@ function PlayerView({ base, meta, me }) {
 
   return (
     <div className="text-center">
-      <div className="clay-inset px-3 py-2 mb-3 font-bold text-sm" style={{ color: 'var(--c-grape)' }}>🎲 소신껏 골라! 다수·소수 벌칙은 끝나고 랜덤 결정</div>
+      <div className="clay-inset px-3 py-2 mb-3 font-bold text-sm" style={{ color: 'var(--c-grape)' }}>🗳️ 소신껏 골라! 다수·소수 벌칙은 진행자가 결정</div>
 
       {staged ? (
         <div>
@@ -220,7 +235,7 @@ export default {
   id: 'battle',
   name: '밸런스 배틀',
   emoji: '⚖️',
-  tagline: '소신 투표 · 다수/소수 랜덤 벌칙',
+  tagline: '소신 투표 · 진행자가 다수/소수 벌칙 결정',
   genres: ['mind'],
   traits: ['solo'],
   HostView,

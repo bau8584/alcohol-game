@@ -1,8 +1,8 @@
-// 싱크로 (4지선다 텔레파시) — 제시어 + 보기 4개. 정답은 없고, 팀원과 '같은 보기'를 고르면 싱크로💞.
-// 호스트가 제시어/보기를 🎲 프리셋 또는 직접 입력으로 정하고, 참가자는 4개 중 하나를 고른다.
+// 싱크로 (마음 맞히기) — 질문자가 4개 보기 중 '답 하나'를 비밀로 정하고, 나머지가 그 답을 맞힌다.
+// 질문자와 같은 보기를 고른 사람 = 텔레파시 성공 💯, 못 맞힌 사람 = 벌칙 🍺.
+// 호스트가 제시어/보기를 🎲 프리셋 또는 직접 입력으로 정하고, 질문자를 지목한다.
 import { useEffect, useMemo, useState } from 'react'
-import { useValue, dbSet, toList } from '../lib/db'
-import { Button } from '../components/ui'
+import { useValue, dbSet } from '../lib/db'
 
 const LETTERS = ['A', 'B', 'C', 'D']
 const COLORS = ['var(--c-coral)', 'var(--c-sky)', 'var(--c-grape)', 'var(--c-mint)']
@@ -67,132 +67,165 @@ const ADULT = [
   { q: '술 취하면 하고 싶은', opts: ['연락', '스킨십', '고백', '뽀뽀'] },
 ]
 
-function HostView({ base, meta, players, teams }) {
+/* ───────── 호스트 ───────── */
+function HostView({ base, meta, players }) {
   const quiz = useValue(`${base}/quiz`)
+  const answerer = useValue(`${base}/answerer`) // 질문자 playerId
+  const answer = useValue(`${base}/answer`) // 질문자의 비밀 답(0~3) — 공개 전엔 값 숨김
   const picks = useValue(`${base}/pick`)
-  const modeRaw = useValue(`${base}/mode`)
-  const mode = modeRaw === 'team' ? 'team' : 'solo'
+  const staged = meta.roundStatus === 'staged'
   const reveal = meta.roundStatus === 'reveal'
+
+  const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
+  const answererName = byId[answerer]?.nickname
 
   // 로컬 편집 초안 (호스트가 유일한 작성자 → 충돌 없음)
   const [draft, setDraft] = useState({ q: '', opts: ['', '', '', ''] })
   useEffect(() => { setDraft(quiz || { q: '', opts: ['', '', '', ''] }) }, [meta.roundSeq]) // eslint-disable-line
 
-  const write = (next) => { setDraft(next); dbSet(`${base}/quiz`, next); dbSet(`${base}/pick`, null) }
+  const write = (next) => { setDraft(next); dbSet(`${base}/quiz`, next); dbSet(`${base}/pick`, null); dbSet(`${base}/answer`, null) }
   const roll = (arr) => write(arr[Math.floor(Math.random() * arr.length)])
   const setQ = (v) => { const n = { ...draft, q: v }; setDraft(n); dbSet(`${base}/quiz`, n) }
   const setOpt = (i, v) => { const opts = [...draft.opts]; opts[i] = v; const n = { ...draft, opts }; setDraft(n); dbSet(`${base}/quiz`, n) }
 
-  // 보기별 집계 (개인전)
-  const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
-  const groups = useMemo(() => {
+  // 추측 집계 (질문자 제외)
+  const guessers = players.filter((p) => p.id !== answerer)
+  const pk = picks || {}
+  const answered = typeof answer === 'number'
+  const byOption = useMemo(() => {
     const g = [[], [], [], []]
-    toList(picks).forEach((e) => {
-      const i = e.value
-      if (i >= 0 && i < 4) g[i].push(byId[e.id]?.nickname || e.id)
-    })
+    guessers.forEach((p) => { const i = pk[p.id]; if (typeof i === 'number' && i >= 0 && i < 4) g[i].push(p.nickname) })
     return g
-  }, [picks, byId])
-  const submitted = groups.reduce((a, b) => a + b.length, 0)
-  const maxCount = Math.max(0, ...groups.map((g) => g.length))
-
-  // 팀별 싱크로율 (팀전) — 팀원 중 같은 보기를 고른 최대 인원 / 응답 인원
-  const teamStats = useMemo(() => {
-    const pk = picks || {}
-    return (teams || []).map((t) => {
-      const memberPicks = (t.members || []).map((m) => pk[m.id]).filter((i) => typeof i === 'number' && i >= 0 && i < 4)
-      const counts = [0, 0, 0, 0]
-      memberPicks.forEach((i) => counts[i]++)
-      const answered = memberPicks.length
-      const biggest = Math.max(0, ...counts)
-      const bestOpt = counts.indexOf(biggest)
-      return { t, answered, total: (t.members || []).length, biggest, bestOpt, rate: answered ? biggest / answered : 0 }
-    }).sort((a, b) => b.rate - a.rate || b.biggest - a.biggest || b.answered - a.answered)
-  }, [teams, picks])
-
-  const setMode = (m) => dbSet(`${base}/mode`, m)
+  }, [picks, answerer, players]) // eslint-disable-line
+  const guessCount = guessers.filter((p) => typeof pk[p.id] === 'number').length
+  const correctNames = answered ? byOption[answer] : []
+  const wrongNames = guessers.filter((p) => typeof pk[p.id] === 'number' && pk[p.id] !== answer).map((p) => p.nickname)
 
   return (
     <div className="text-center">
-      {!reveal && (
-        <div className="mb-3 max-w-md mx-auto text-left">
-          <div className="flex gap-2 justify-center mb-2">
-            <button onClick={() => roll(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲 일반</button>
-            <button onClick={() => roll(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
-          </div>
-          <div className="text-xs mb-1" style={{ color: 'var(--ink-soft)' }}>✏️ 주사위로 뽑은 뒤, 제시어·보기를 원하는 대로 고쳐도 돼요</div>
-          <input value={draft.q} onChange={(e) => setQ(e.target.value)} placeholder="제시어 입력" className="clay-inset w-full px-3 py-2.5 text-center font-display" />
-          <div className="grid grid-cols-2 gap-2 mt-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <span className="font-display w-6 h-8 shrink-0 flex items-center justify-center rounded-lg text-sm" style={{ background: COLORS[i], color: '#fff' }}>{LETTERS[i]}</span>
-                <input value={draft.opts?.[i] || ''} onChange={(e) => setOpt(i, e.target.value)} placeholder={`보기 ${i + 1}`} className="clay-inset flex-1 min-w-0 px-2 py-2 text-center" />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 모드 토글: 개인전 ↔ 팀전 (공개 중에도 전환 가능) */}
-      <div className="flex justify-center gap-2 mb-3">
-        {[['solo', '🧍 개인전'], ['team', '👥 팀전']].map(([m, label]) => (
-          <button key={m} onClick={() => setMode(m)} className="clay-btn px-4 py-1.5 text-sm font-bold" style={mode === m ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      <div className="font-display text-2xl">{quiz?.q || '제시어를 정하세요'}</div>
-      <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>{submitted}/{players.length} 선택{!reveal && ' · 공개 전'}</div>
-
-      {reveal && mode === 'team' ? (
-        // 팀별 싱크로율 순위
-        <div className="mt-4 space-y-2 max-w-md mx-auto text-left">
-          {teamStats.map((s, r) => {
-            const champ = r === 0 && s.answered > 0
-            return (
-              <div key={s.t.id} className="clay flex items-center justify-between px-4 py-3" style={{ background: champ ? s.t.color : 'var(--surface)', color: champ ? '#fff' : 'var(--ink)' }}>
-                <div className="min-w-0 flex items-center gap-2">
-                  <span className="font-display text-xl w-6 shrink-0">{champ ? '🏆' : r + 1}</span>
-                  <span className="font-display text-lg" style={{ color: champ ? '#fff' : s.t.color }}>{s.t.name}</span>
-                  {s.answered > 0
-                    ? <span className="text-sm opacity-80"> · {s.biggest}/{s.answered} 일치 · {LETTERS[s.bestOpt]}. {quiz?.opts?.[s.bestOpt] || '—'}</span>
-                    : <span className="text-sm opacity-70"> · 미참여</span>}
+      {staged ? (
+        <>
+          {/* 질문 편집 */}
+          <div className="mb-3 max-w-md mx-auto text-left">
+            <div className="flex gap-2 justify-center mb-2">
+              <button onClick={() => roll(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲 일반</button>
+              <button onClick={() => roll(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+            </div>
+            <div className="text-xs mb-1" style={{ color: 'var(--ink-soft)' }}>✏️ 주사위로 뽑은 뒤, 제시어·보기를 원하는 대로 고쳐도 돼요</div>
+            <input value={draft.q} onChange={(e) => setQ(e.target.value)} placeholder="제시어 입력" className="clay-inset w-full px-3 py-2.5 text-center font-display" />
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="font-display w-6 h-8 shrink-0 flex items-center justify-center rounded-lg text-sm" style={{ background: COLORS[i], color: '#fff' }}>{LETTERS[i]}</span>
+                  <input value={draft.opts?.[i] || ''} onChange={(e) => setOpt(i, e.target.value)} placeholder={`보기 ${i + 1}`} className="clay-inset flex-1 min-w-0 px-2 py-2 text-center" />
                 </div>
-                <span className="font-display text-2xl shrink-0 ml-2">{s.answered ? Math.round(s.rate * 100) : 0}%{champ && s.rate === 1 ? '💯' : ''}</span>
-              </div>
-            )
-          })}
-          {!teamStats.length && <p className="py-6 text-center" style={{ color: 'var(--ink-soft)' }}>팀이 없어요.</p>}
-        </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 질문자 지목 */}
+          <div className="max-w-md mx-auto">
+            <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>🤫 답을 정할 <b>질문자</b>를 골라주세요</div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {players.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => dbSet(`${base}/answerer`, p.id)}
+                  className="clay-btn px-3 py-1.5 font-bold"
+                  style={answerer === p.id ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
+                >
+                  {answerer === p.id ? '🤫 ' : ''}{p.nickname}
+                </button>
+              ))}
+              {!players.length && <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>참가자가 없어요.</span>}
+            </div>
+          </div>
+          <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>
+            {answerer ? '▶ 시작 → 질문자가 답을 정하고, 나머지가 맞혀요' : '질문자를 먼저 골라주세요'}
+          </p>
+        </>
       ) : (
-        // 보기별 분포 (개인전 · 공개 전 보기 미리보기 겸용)
-        <div className="mt-4 space-y-2 max-w-md mx-auto text-left">
-          {[0, 1, 2, 3].map((i) => {
-            const isTop = reveal && groups[i].length > 0 && groups[i].length === maxCount
-            return (
-              <div key={i} className="clay flex items-center justify-between px-4 py-3" style={{ background: isTop ? COLORS[i] : 'var(--surface)', color: isTop ? '#fff' : 'var(--ink)' }}>
-                <div className="min-w-0">
-                  <span className="font-display" style={{ color: isTop ? '#fff' : COLORS[i] }}>{LETTERS[i]}.</span>{' '}
-                  <span className="font-display text-lg">{quiz?.opts?.[i] || '—'}</span>
-                  {reveal && groups[i].length > 0 && <span className="text-sm opacity-80"> · {groups[i].join(', ')}</span>}
+        <>
+          <div className="font-display text-2xl">{quiz?.q || '제시어'}</div>
+          <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>
+            🤫 질문자 <b style={{ color: 'var(--ink)' }}>{answererName || '?'}</b>
+            {!reveal && <> · 답 {answered ? '정함 ✓' : '고르는 중…'} · 추측 {guessCount}/{guessers.length}</>}
+          </div>
+
+          <div className="mt-4 space-y-2 max-w-md mx-auto text-left">
+            {[0, 1, 2, 3].map((i) => {
+              const isAns = reveal && answer === i
+              return (
+                <div key={i} className="clay flex items-center justify-between px-4 py-3" style={{ background: isAns ? COLORS[i] : 'var(--surface)', color: isAns ? '#fff' : 'var(--ink)' }}>
+                  <div className="min-w-0">
+                    <span className="font-display" style={{ color: isAns ? '#fff' : COLORS[i] }}>{LETTERS[i]}.</span>{' '}
+                    <span className="font-display text-lg">{quiz?.opts?.[i] || '—'}</span>
+                    {reveal && byOption[i].length > 0 && <span className="text-sm opacity-80"> · {byOption[i].join(', ')}</span>}
+                  </div>
+                  <div className="shrink-0 ml-2 flex items-center gap-1">
+                    {reveal && <span className="font-display text-2xl">{byOption[i].length}</span>}
+                    {isAns && <span className="text-2xl">⭐</span>}
+                  </div>
                 </div>
-                {reveal && <span className="font-display text-2xl shrink-0 ml-2">{groups[i].length}{isTop && groups[i].length >= 2 ? '💞' : ''}</span>}
-              </div>
-            )
-          })}
-        </div>
+              )
+            })}
+          </div>
+
+          {reveal && (
+            <div className="mt-4 max-w-md mx-auto">
+              {answered ? (
+                <>
+                  <div className="font-display text-xl">⭐ {answererName}의 답: {LETTERS[answer]}. {quiz?.opts?.[answer] || '—'}</div>
+                  <div className="mt-2 clay-inset px-4 py-3 text-left">
+                    <div className="font-bold" style={{ color: 'var(--c-mint)' }}>💯 맞힘 ({correctNames.length}): {correctNames.length ? correctNames.join(', ') : '없음'}</div>
+                    <div className="font-bold mt-1" style={{ color: 'var(--c-coral)' }}>🍺 벌칙 ({wrongNames.length}): {wrongNames.length ? wrongNames.join(', ') : '없음'}</div>
+                  </div>
+                </>
+              ) : (
+                <p className="font-bold" style={{ color: 'var(--c-coral)' }}>질문자가 답을 안 정했어요. 🔄 새 라운드로 다시!</p>
+              )}
+            </div>
+          )}
+          {!reveal && <p className="mt-4 text-sm" style={{ color: 'var(--ink-soft)' }}>질문자가 답을 정하면 👁 공개!</p>}
+        </>
       )}
-      {!reveal && <p className="mt-4 text-sm" style={{ color: 'var(--ink-soft)' }}>▶ 시작 → 참가자 선택 → 👁 공개{mode === 'team' ? ' → 팀별 싱크로율 순위' : ''}</p>}
     </div>
   )
 }
 
-function PlayerView({ base, meta, me }) {
+/* ───────── 플레이어 ───────── */
+function OptionButtons({ opts, selected, onPick, disabled }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 mt-4">
+      {[0, 1, 2, 3].map((i) => {
+        const picked = selected === i
+        return (
+          <button
+            key={i}
+            onClick={() => !disabled && onPick(i)}
+            disabled={disabled}
+            className="clay-btn py-4 font-display text-lg flex items-center gap-3 px-4"
+            style={picked ? { background: COLORS[i], color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
+          >
+            <span className="w-6 shrink-0" style={{ color: picked ? '#fff' : COLORS[i] }}>{LETTERS[i]}</span>
+            <span className="flex-1 text-left">{opts?.[i] || '—'}</span>
+            {picked && <span>✓</span>}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function PlayerView({ base, meta, players, me }) {
   const quiz = useValue(`${base}/quiz`)
+  const answerer = useValue(`${base}/answerer`)
+  const answer = useValue(`${base}/answer`)
   const mine = useValue(`${base}/pick/${me.id}`)
   const open = meta.roundStatus === 'open'
   const reveal = meta.roundStatus === 'reveal'
+  const amAnswerer = answerer === me.id
+  const answererName = players.find((p) => p.id === answerer)?.nickname || '질문자'
 
   if (!quiz?.q) {
     return (
@@ -203,31 +236,66 @@ function PlayerView({ base, meta, me }) {
     )
   }
 
+  // 공개
+  if (reveal) {
+    const ansText = typeof answer === 'number' ? `${LETTERS[answer]}. ${quiz.opts?.[answer] || '—'}` : '미정'
+    if (amAnswerer) {
+      return (
+        <div className="text-center">
+          <p className="font-display text-xl">{quiz.q}</p>
+          <div className="mt-4 clay p-6" style={{ background: 'var(--c-grape)', color: '#fff' }}>
+            <div className="opacity-80 text-sm">🤫 내가 고른 답</div>
+            <div className="font-display text-3xl mt-1">{ansText}</div>
+          </div>
+          <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>메인 화면에서 누가 맞혔는지 확인!</p>
+        </div>
+      )
+    }
+    const correct = typeof answer === 'number' && mine === answer
+    return (
+      <div className="text-center">
+        <p className="font-display text-xl">{quiz.q}</p>
+        <div className="mt-4 clay p-6" style={{ background: correct ? 'var(--c-mint)' : 'var(--c-coral)', color: '#fff' }}>
+          <div className="font-display text-4xl">{correct ? '💯 정답!' : '🍺 벌칙!'}</div>
+          <div className="mt-2 opacity-90">{answererName}의 답: <b>{ansText}</b></div>
+          <div className="mt-1 text-sm opacity-80">내 추측: {typeof mine === 'number' ? `${LETTERS[mine]}. ${quiz.opts?.[mine] || '—'}` : '안 함'}</div>
+        </div>
+      </div>
+    )
+  }
+
+  // 진행 전(대기)
+  if (!open) {
+    return (
+      <div className="text-center py-10">
+        <div className="text-5xl">🤫</div>
+        <p className="mt-3 font-display text-xl">
+          {amAnswerer ? '당신이 질문자로 지정됐어요!' : `질문자: ${answererName}`}
+        </p>
+        <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>진행자가 시작하면 시작해요…</p>
+      </div>
+    )
+  }
+
+  // 진행 중 — 질문자: 비밀 답 정하기
+  if (amAnswerer) {
+    return (
+      <div className="text-center">
+        <p className="font-display text-xl">{quiz.q}</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--c-grape)' }}>🤫 당신이 <b>질문자</b>! 답 하나를 정하세요 · 남들이 이걸 맞혀요</p>
+        <OptionButtons opts={quiz.opts} selected={typeof answer === 'number' ? answer : null} onPick={(i) => dbSet(`${base}/answer`, i)} />
+        {typeof answer === 'number' && <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>답 정함 · 변경 가능 (비밀)</p>}
+      </div>
+    )
+  }
+
+  // 진행 중 — 추측자
   return (
     <div className="text-center">
       <p className="font-display text-xl">{quiz.q}</p>
-      <p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>팀원과 같은 보기를 고르면 싱크로 💞</p>
-      <div className="grid grid-cols-1 gap-2 mt-4">
-        {[0, 1, 2, 3].map((i) => {
-          const picked = mine === i
-          return (
-            <button
-              key={i}
-              onClick={() => open && dbSet(`${base}/pick/${me.id}`, i)}
-              disabled={!open}
-              className="clay-btn py-4 font-display text-lg flex items-center gap-3 px-4"
-              style={picked ? { background: COLORS[i], color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
-            >
-              <span className="w-6 shrink-0" style={{ color: picked ? '#fff' : COLORS[i] }}>{LETTERS[i]}</span>
-              <span className="flex-1 text-left">{quiz.opts?.[i] || '—'}</span>
-              {picked && <span>✓</span>}
-            </button>
-          )
-        })}
-      </div>
-      {!open && !reveal && <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>진행자 대기 중…</p>}
-      {reveal && <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>🔒 공개됨 · 메인 화면 확인!</p>}
-      {open && mine != null && <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>선택 완료 · 변경 가능</p>}
+      <p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>🔮 <b>{answererName}</b>가 고른 답을 맞혀보세요!</p>
+      <OptionButtons opts={quiz.opts} selected={typeof mine === 'number' ? mine : null} onPick={(i) => dbSet(`${base}/pick/${me.id}`, i)} />
+      {typeof mine === 'number' && <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>추측 완료 · 변경 가능</p>}
     </div>
   )
 }
@@ -236,9 +304,9 @@ export default {
   id: 'sync',
   name: '싱크로',
   emoji: '💞',
-  tagline: '4지선다 텔레파시 · 개인전/팀전 순위',
+  tagline: '질문자의 답 맞히기 · 텔레파시',
   genres: ['telepathy'],
-  traits: ['solo', 'team'],
+  traits: ['solo'],
   HostView,
   PlayerView,
 }

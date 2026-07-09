@@ -12,12 +12,16 @@ import rolling from './rolling.jsx'
 import jinseonmi from './jinseonmi.jsx'
 import faces from './faces.jsx'
 import charades from './decks/charades.js'
-import wordrelay from './decks/wordrelay.js'
+import wordrelay from './decks/wordrelay.jsx'
 import category from './decks/category.js'
 import roulette from './roulette.jsx'
 import king from './king.jsx'
+import whodunit from './whodunit.jsx'
+import wavelength from './wavelength.jsx'
+import mission from './mission.jsx'
+import twotruths from './twotruths.jsx'
 
-export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king]
+export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, twotruths]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 

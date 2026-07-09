@@ -60,8 +60,25 @@ function PickHost({ base, players, N, nameOf, rolling, setRolling, timer }) {
   const count = Math.max(1, Math.min(N || 1, rawCount || 1))
   const mission = useValue(`${base}/mission`) || ''
   const picked = toArr(useValue(`${base}/picked`))
+  const noRepeat = !!useValue(`${base}/noRepeat`) // 한 바퀴 안 겹치게
+  const history = toArr(useValue(`${base}/history`)) // 이번 바퀴에 이미 뽑힌 id
   const [flash, setFlash] = useState([])
   const setCount = (d) => dbTransaction(`${base}/count`, (cur) => Math.max(1, Math.min(N, (cur || 1) + d)))
+
+  // 현재 참가자 기준 제외/남은 인원
+  const histIds = new Set(history)
+  const excluded = players.filter((p) => histIds.has(p.id)).length
+  const remaining = Math.max(0, N - excluded)
+
+  // 최종 추첨 — noRepeat면 history 제외, 남은 후보가 부족하면 한 바퀴 리셋
+  const finalize = (n) => {
+    if (!noRepeat) { dbSet(`${base}/picked`, sample(players, n)); return }
+    let pool = players.filter((p) => !histIds.has(p.id))
+    let carry = history.filter((id) => players.some((p) => p.id === id)) // 유효 id만 유지
+    if (pool.length < n) { pool = players; carry = [] } // 전원 다 돎 → 자동 리셋
+    const pick = sample(pool, n)
+    dbUpdate(base, { picked: pick, history: [...carry, ...pick] })
+  }
 
   const roll = () => {
     if (rolling || N === 0) return
@@ -75,7 +92,7 @@ function PickHost({ base, players, N, nameOf, rolling, setRolling, timer }) {
         clearInterval(timer.current)
         setFlash([])
         setRolling(false)
-        dbSet(`${base}/picked`, sample(players, n))
+        finalize(n)
       }
     }, 75)
   }
@@ -97,7 +114,25 @@ function PickHost({ base, players, N, nameOf, rolling, setRolling, timer }) {
         </div>
         <button onClick={() => setCount(1)} disabled={count >= N} className="clay-btn w-12 h-12 text-3xl font-display disabled:opacity-40" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>+</button>
       </div>
-      <Button className="mt-5 w-full max-w-md mx-auto text-2xl py-4" onClick={roll} disabled={rolling || N === 0}>
+
+      {/* 최근 뽑힌 사람 제외 — 한 바퀴 순환 */}
+      <div className="mt-4 flex items-center justify-center gap-2 flex-wrap">
+        <button
+          onClick={() => dbUpdate(base, { noRepeat: !noRepeat, history: null })}
+          className="clay-btn px-3 py-1.5 text-sm font-bold"
+          style={noRepeat ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
+        >
+          🔁 안 겹치게 {noRepeat ? 'ON' : 'OFF'}
+        </button>
+        {noRepeat && (
+          <>
+            <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>제외 {excluded} · 남은 <b style={{ color: 'var(--ink)' }}>{remaining}</b>명</span>
+            <button onClick={() => dbSet(`${base}/history`, null)} className="clay-btn px-2 py-1 text-xs" style={{ background: 'var(--surface-2)', color: 'var(--ink-soft)' }}>🔄 기록 초기화</button>
+          </>
+        )}
+      </div>
+
+      <Button className="mt-4 w-full max-w-md mx-auto text-2xl py-4" onClick={roll} disabled={rolling || N === 0}>
         {rolling ? '두구두구… 🥁' : picked.length ? '🎰 다시 뽑기!' : '🎰 뽑기!'}
       </Button>
       {N === 0 && <p className="mt-2 text-sm" style={{ color: 'var(--ink-soft)' }}>참가자가 없어요.</p>}

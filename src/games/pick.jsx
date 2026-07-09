@@ -1,5 +1,5 @@
 // 고르기 — 사람 지목. 시작 → 공개(결과). 참가자가 질문 제안 → 호스트가 골라 씀.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet, dbUpdate, dbPush, toList } from '../lib/db'
 import { Button } from '../components/ui'
 
@@ -7,6 +7,50 @@ const MAX_PICK = 5
 // 한 참가자의 선택을 배열로 정규화 (신 구조 {tid:true} / 구 구조 단일 문자열 모두 지원)
 const selectedIds = (sel) =>
   typeof sel === 'string' ? [sel] : sel && typeof sel === 'object' ? Object.keys(sel).filter((k) => sel[k]) : []
+
+// 질문 풀 — 🎲 일반 / 🎲 19금(빨강)
+const NORMAL = [
+  '오늘 제일 먼저 취할 것 같은 사람?',
+  '술 마시면 제일 시끄러워지는 사람?',
+  '술 취하면 제일 개차반 되는 사람?',
+  '주사가 제일 심할 것 같은 사람?',
+  '여기서 제일 코 골 것 같은 사람?',
+  '자취방이 제일 더러울 것 같은 사람?',
+  '노래방 가면 마이크 안 놓을 사람?',
+  '치킨 시키면 혼자 다 먹을 것 같은 사람?',
+  '술값 계산할 때 슬쩍 화장실 가는 사람?',
+  '취하면 갑자기 철학자 되는 사람?',
+  '연락 제일 안 되는 사람?',
+  '방 청소 절대 안 할 것 같은 사람?',
+  '갑자기 사라져도 아무도 모를 것 같은 사람?',
+  '몰래 성형했을 것 같은 사람?',
+  '검색 기록 절대 못 보여줄 것 같은 사람?',
+  '흑역사가 제일 많을 것 같은 사람?',
+  '술 마시면 울 것 같은 사람?',
+  '자면서 침 흘릴 것 같은 사람?',
+  '엄마한테 아직 용돈 받을 것 같은 사람?',
+  '전 애인한테 아직 미련 남은 사람?',
+  '첫사랑 아직 못 잊었을 것 같은 사람?',
+  '연애편지 손발 오그라들게 쓸 것 같은 사람?',
+  '방금 몰래 방귀 뀐 것 같은 사람?',
+]
+const ADULT = [
+  '오늘 이 중에 한 명이랑 자야 한다면?',
+  '여기서 제일 밝힐 것 같은 사람?',
+  '연애하면 제일 밝힐 것 같은 사람?',
+  '첫 경험이 제일 빨랐을 것 같은 사람?',
+  '모텔 제일 자주 갈 것 같은 사람?',
+  '술 취하면 아무한테나 들이댈 것 같은 사람?',
+  '지금 폰에 야한 사진 있을 것 같은 사람?',
+  '전 애인이 제일 많을 것 같은 사람?',
+  '하룻밤 상대로 제일 인기 많을 것 같은 사람?',
+  '침대에서 제일 시끄러울 것 같은 사람?',
+  '가장 은밀한 취향을 가졌을 것 같은 사람?',
+  '옛날에 클럽 죽돌이/죽순이였을 것 같은 사람?',
+  '연상·연하 킬러일 것 같은 사람?',
+  'MT 끝나고 몰래 둘이 연락할 것 같은 사람?',
+  '다음에 커플 될 것 같은 사람?',
+]
 
 function HostView({ base, meta, players, writePrompt }) {
   const raw = useValue(`${base}/pick`)
@@ -28,8 +72,23 @@ function HostView({ base, meta, players, writePrompt }) {
   const reveal = meta.roundStatus === 'reveal'
   const notYet = players.filter((p) => !votedIds.has(p.id))
 
+  // 질문 입력 로컬 상태 (새 라운드마다 리셋) + 주사위
+  const [q, setQ] = useState(meta.prompt || '')
+  useEffect(() => { setQ(meta.prompt || '') }, [meta.roundSeq]) // eslint-disable-line
+  const writeQ = (v) => { setQ(v); writePrompt?.(v) }
+  const rollFrom = (arr) => writeQ(arr[Math.floor(Math.random() * arr.length)])
+
   return (
     <div>
+      {!reveal && (
+        <div className="mb-3 max-w-md mx-auto">
+          <input value={q} onChange={(e) => writeQ(e.target.value)} placeholder="질문 (직접 입력 또는 주사위)" className="clay-inset w-full px-3 py-2.5 text-center" />
+          <div className="flex gap-2 mt-2 justify-center">
+            <button onClick={() => rollFrom(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲 일반</button>
+            <button onClick={() => rollFrom(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+          </div>
+        </div>
+      )}
       {suggestions.length > 0 && (
         <div className="clay-inset p-3 mb-3 text-left max-h-40 overflow-y-auto">
           <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>💡 제안된 질문 ({suggestions.length})</div>
@@ -171,51 +230,7 @@ export default {
   tagline: '누구를 지목? · 득표 순위',
   genres: ['mind'],
   traits: ['anon', 'solo'],
-  promptLabel: '질문 (예: 오늘 제일 취할 것 같은 사람?)',
   controls: { startLabel: '▶ 시작', resetLabel: '🔄 새 질문' },
-  presets: [
-    // 일반/웃김
-    '오늘 제일 먼저 취할 것 같은 사람?',
-    '술 마시면 제일 시끄러워지는 사람?',
-    '술 취하면 제일 개차반 되는 사람?',
-    '주사가 제일 심할 것 같은 사람?',
-    '여기서 제일 코 골 것 같은 사람?',
-    '자취방이 제일 더러울 것 같은 사람?',
-    '노래방 가면 마이크 안 놓을 사람?',
-    '치킨 시키면 혼자 다 먹을 것 같은 사람?',
-    '술값 계산할 때 슬쩍 화장실 가는 사람?',
-    '취하면 갑자기 철학자 되는 사람?',
-    '연락 제일 안 되는 사람?',
-    '방 청소 절대 안 할 것 같은 사람?',
-    '갑자기 사라져도 아무도 모를 것 같은 사람?',
-    // 민망
-    '몰래 성형했을 것 같은 사람?',
-    '검색 기록 절대 못 보여줄 것 같은 사람?',
-    '흑역사가 제일 많을 것 같은 사람?',
-    '술 마시면 울 것 같은 사람?',
-    '자면서 침 흘릴 것 같은 사람?',
-    '엄마한테 아직 용돈 받을 것 같은 사람?',
-    '전 애인한테 아직 미련 남은 사람?',
-    '첫사랑 아직 못 잊었을 것 같은 사람?',
-    '연애편지 손발 오그라들게 쓸 것 같은 사람?',
-    '방금 몰래 방귀 뀐 것 같은 사람?',
-    // 19금
-    '오늘 이 중에 한 명이랑 자야 한다면?',
-    '여기서 제일 밝힐 것 같은 사람?',
-    '연애하면 제일 밝힐 것 같은 사람?',
-    '첫 경험이 제일 빨랐을 것 같은 사람?',
-    '모텔 제일 자주 갈 것 같은 사람?',
-    '술 취하면 아무한테나 들이댈 것 같은 사람?',
-    '지금 폰에 야한 사진 있을 것 같은 사람?',
-    '전 애인이 제일 많을 것 같은 사람?',
-    '하룻밤 상대로 제일 인기 많을 것 같은 사람?',
-    '침대에서 제일 시끄러울 것 같은 사람?',
-    '가장 은밀한 취향을 가졌을 것 같은 사람?',
-    '옛날에 클럽 죽돌이/죽순이였을 것 같은 사람?',
-    '연상·연하 킬러일 것 같은 사람?',
-    'MT 끝나고 몰래 둘이 연락할 것 같은 사람?',
-    '다음에 커플 될 것 같은 사람?',
-  ],
   HostView,
   PlayerView,
 }
