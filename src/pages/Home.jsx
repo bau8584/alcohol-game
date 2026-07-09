@@ -32,7 +32,7 @@ export default function Home() {
     try {
       await ensureFixedRoom()
       await clearSeeds(SB_ROOM_ID) // 실제 호스트 입장 시 테스트 명단 자동 제거
-      localStorage.setItem(`agw.host.${SB_ROOM_ID}`, '1')
+      localStorage.setItem(`agw.host.${SB_ROOM_ID}`, hostPin) // 실제 PIN 저장(자동 인증은 DB 대조로만)
       nav(`/host/${SB_ROOM_ID}`)
     } catch (e) {
       setErr('입장 실패: ' + e.message)
@@ -46,7 +46,7 @@ export default function Home() {
     try {
       await ensureFixedRoom(SB_TEST_ROOM_ID)
       await seedRoster(SB_TEST_ROOM_ID)
-      localStorage.setItem(`agw.host.${SB_TEST_ROOM_ID}`, '1')
+      localStorage.setItem(`agw.host.${SB_TEST_ROOM_ID}`, SB_HOST_PIN) // 테스트 방도 실제 PIN 저장
       nav(`/host/${SB_TEST_ROOM_ID}`)
     } catch (e) {
       setErr('테스트 실패: ' + e.message)

@@ -20,8 +20,9 @@ import whodunit from './whodunit.jsx'
 import wavelength from './wavelength.jsx'
 import mission from './mission.jsx'
 import twotruths from './twotruths.jsx'
+import mbti from './mbti.jsx'
 
-export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, twotruths]
+export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, twotruths, mbti]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 
