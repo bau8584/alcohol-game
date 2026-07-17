@@ -11,7 +11,8 @@ import { DEFAULT_TEAMS, TEAM_COLORS } from '../config/teams'
 import { initialItems } from '../config/items'
 import { ROSTER } from '../config/roster'
 
-const genRoomId = () => Math.random().toString().slice(2, 8) // 6자리 숫자 방코드
+const genRoomId = () => String(Math.floor(100000 + Math.random() * 900000)) // 6자리 숫자 방코드(앞자리 0 없음)
+const genHostPin = () => String(Math.floor(1000 + Math.random() * 9000)) // 4자리 호스트 PIN
 
 // 기본 팀 시드 (이름·색·순서·점수·재화)
 const seedTeams = () =>
@@ -44,8 +45,16 @@ async function writeNewRoom(roomId, hostPin) {
   return roomId
 }
 
-// ── 방 생성 (호스트, 랜덤 코드) ──────────────────
-export const createRoom = (hostPin) => writeNewRoom(genRoomId(), hostPin)
+// ── 방 생성 (호스트, 랜덤 코드 + PIN 자동 발급) ───
+// 6자리 방코드와 4자리 호스트 PIN을 새로 뽑아 방을 만들고 { roomId, hostPin } 반환.
+// 방코드가 이미 있으면(희박) 몇 번 다시 뽑아 기존 방 덮어쓰기를 피한다.
+export async function createRoom() {
+  let roomId = genRoomId()
+  for (let i = 0; i < 8 && (await roomExists(roomId)); i++) roomId = genRoomId()
+  const hostPin = genHostPin()
+  await writeNewRoom(roomId, hostPin)
+  return { roomId, hostPin }
+}
 
 // ── 고정 방 확보 (없으면 생성) ───────────────────
 export async function ensureFixedRoom(roomId = SB_ROOM_ID, hostPin = SB_HOST_PIN) {

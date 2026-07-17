@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
-import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost } from '../lib/actions'
+import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost, resetRoom, clearSeeds } from '../lib/actions'
 import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
 import ItemBar from '../components/ItemBar'
 import HostConsole from '../components/HostConsole'
+import Scoreboard from '../components/Scoreboard'
+import TeamSettings from '../components/TeamSettings'
+import PlayerManager from '../components/PlayerManager'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
 import { Button, Card, PhaseTag } from '../components/ui'
@@ -139,6 +142,10 @@ export default function Player() {
 
       {onHostTab ? (
         <>
+          <HostToolbar roomId={roomId} players={players} />
+          <Scoreboard roomId={roomId} teams={teams} />
+          {!game && <TeamSettings roomId={roomId} teams={teams} />}
+          <PlayerManager roomId={roomId} players={players} teams={teams} />
           <HostConsole roomId={roomId} meta={meta} players={players} teams={teams} compact />
           <button
             onClick={async () => { if (confirm('진행자 권한을 내려놓을까요?')) { await releaseHost(roomId, playerId); setTab('play') } }}
@@ -234,6 +241,31 @@ function TeamScores({ teams, myTeamId }) {
         )
       })}
     </div>
+  )
+}
+
+// 폰 진행 탭 상단 툴바 — 방 정보(참가·TV 링크) + 초기화 + 테스트 명단 지우기.
+// (19금 토글은 HostConsole 쪽에서 별도 처리)
+function HostToolbar({ roomId, players }) {
+  const joinUrl = `${location.origin}/play/${roomId}`
+  const tvUrl = `${location.origin}/tv/${roomId}`
+  const doReset = () => { if (confirm('참가자·점수·재화·진행상태를 모두 지우고 처음 상태로 초기화할까요?')) resetRoom(roomId) }
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>방 코드 </span>
+          <span className="font-display text-2xl tracking-widest">{roomId}</span>
+          <div className="text-xs truncate" style={{ color: 'var(--ink-soft)' }}>참가 {joinUrl} · 📺 {tvUrl}</div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {players.some((p) => p.seed) && (
+            <button onClick={() => clearSeeds(roomId)} className="clay-btn font-display px-3 py-2 text-sm" style={{ background: 'var(--c-grape)', color: '#fff' }} title="테스트로 시드된 가짜 참가자만 제거 (실제 참가자는 유지)">🧪 테스트 명단</button>
+          )}
+          <button onClick={doReset} className="clay-btn font-display px-3 py-2 text-sm" style={{ background: 'var(--c-coral)', color: '#fff' }}>🧹 초기화</button>
+        </div>
+      </div>
+    </Card>
   )
 }
 

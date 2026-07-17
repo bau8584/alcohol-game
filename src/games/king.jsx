@@ -28,6 +28,30 @@ const CMDS = [
   '○번, 성대모사 하나 🎭',
   '○번과 △번 백허그 3초 🫂',
   '홀수 번호 전원 건배 🍻',
+  '○번, 왕 시키는 대로 몸개그 하나 🤪',
+  '○번과 △번, 텐션 최고로 하이파이브 ✋',
+  '짝수 번호 전원 원샷 🍺',
+  '○번, 옆 사람에게 러브레터 즉석 낭독 💌',
+  '○번, 지금 최애 노래 후렴구 떼창 🎶',
+  '○번과 △번, 가위바위보 진 사람 벌주 ✊',
+  '○번, 왕 성대모사 하기 👑',
+  '○번, 이 자리에서 제일 웃긴 표정 😝',
+]
+
+// 🔞 성인 명령 (adultEnabled ON일 때만 왕 폰에 노출)
+const ADULT_CMDS = [
+  '○번과 △번, 진한 백허그 5초 🫂',
+  '○번, △번 귀에 대고 달달하게 속삭이기 🤫',
+  '○번과 △번, 러브샷 원샷! 🍷',
+  '○번, △번에게 윙크 3연발 😉',
+  '○번과 △번, 어깨동무하고 볼 맞대기',
+  '○번, 섹시 댄스 5초 💃',
+  '○번과 △번, 눈 안 피하고 10초 응시 👀',
+  '○번, △번 무릎에 3초 앉기',
+  '○번과 △번, 손등에 뽀뽀 💋',
+  '○번, 가장 야한 표정 지어보기 😏',
+  '○번과 △번, 등 마사지 10초 💆',
+  '○번, △번에게 오늘 밤 멘트 한마디 🌙',
 ]
 
 function assignNumbers(players, kingId) {
@@ -113,10 +137,11 @@ function HostView({ base, players }) {
 }
 
 /* ═══════════════ 플레이어 (본인 번호만 본인 폰에) ═══════════════ */
-function PlayerView({ base, players, me }) {
+function PlayerView({ base, meta, players, me }) {
   const kingId = useValue(`${base}/kingId`)
   const myNumber = useValue(`${base}/numbers/${me.id}`)
   const king = players.find((p) => p.id === kingId)
+  const cmdPool = meta?.adultEnabled ? [...CMDS, ...ADULT_CMDS] : CMDS
   const [cmd, setCmd] = useState(() => CMDS[0])
 
   if (!kingId) {
@@ -142,7 +167,7 @@ function PlayerView({ base, players, me }) {
         <div className="clay-inset mt-4 p-4">
           <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>명령 아이디어</div>
           <div className="font-display text-xl mt-1">{cmd}</div>
-          <button onClick={() => setCmd(CMDS[Math.floor(Math.random() * CMDS.length)])} className="clay-btn mt-3 px-4 py-2 text-sm" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 다른 명령</button>
+          <button onClick={() => setCmd(cmdPool[Math.floor(Math.random() * cmdPool.length)])} className="clay-btn mt-3 px-4 py-2 text-sm" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 다른 명령{meta?.adultEnabled ? ' 🔞' : ''}</button>
         </div>
       </div>
     )

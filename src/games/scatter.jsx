@@ -17,13 +17,16 @@ import Countdown from '../components/Countdown'
 import ModeTabs from '../components/ModeTabs'
 import { Button } from '../components/ui'
 
-const SECS = [20, 30, 45, 60]
-const DEFAULT_SEC = 30
+const SECS = [10, 15, 20, 30, 45]
+const DEFAULT_SEC = 15
 const MODES = [
   { id: 'team', label: '팀전', emoji: '👥' },
   { id: 'solo', label: '개인전', emoji: '🧍' },
 ]
 const MEDALS = ['🥇', '🥈', '🥉']
+
+// 무효 처리 저장 키 — Firebase 경로에 못 쓰는 문자만 치환 (값에는 원본 정규화 문자열 저장)
+const keyOf = (n) => n.replace(/[.#$/[\]]/g, '_')
 
 const shuffle = (n) => {
   const a = Array.from({ length: n }, (_, i) => i)
@@ -58,6 +61,7 @@ export function createScatterGame(config) {
     const endsAt = useValue(`${base}/endsAt`)
     const ansRaw = useValue(`${base}/ans`)
     const scored = useValue(`${base}/scored`)
+    const voided = useValue(`${base}/voided`)
     const mode = useValue(`${base}/mode`) || 'team'
     const sec = useValue(`${base}/sec`) || DEFAULT_SEC
 
@@ -65,22 +69,25 @@ export function createScatterGame(config) {
     const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
     const teamById = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t])), [teams])
     const res = useMemo(() => tally(ansRaw), [ansRaw])
+    // 진행자가 무효 처리한 답(주제와 무관 등) — 점수에서 제외
+    const voidedKeys = useMemo(() => new Set(Object.values(voided || {})), [voided])
+    const effOf = (r) => r.items.filter((it) => it.uniq && !voidedKeys.has(it.n)).length
 
-    // 개인 순위 (유니크 많은 순)
+    // 개인 순위 (인정 유니크 많은 순)
     const ranked = useMemo(
       () =>
         Object.entries(res)
-          .map(([pid, r]) => ({ pid, ...r, p: byId[pid] }))
+          .map(([pid, r]) => ({ pid, ...r, eff: r.items.filter((it) => it.uniq && !voidedKeys.has(it.n)).length, p: byId[pid] }))
           .filter((r) => r.p)
-          .sort((a, b) => b.uniq - a.uniq || b.items.length - a.items.length),
-      [res, byId]
+          .sort((a, b) => b.eff - a.eff || b.items.length - a.items.length),
+      [res, byId, voidedKeys]
     )
     // 팀 합계
     const teamScores = useMemo(() => {
       const s = {}
       teams.forEach((t) => (s[t.id] = 0))
       ranked.forEach((r) => {
-        if (r.p.teamId && s[r.p.teamId] !== undefined) s[r.p.teamId] += r.uniq
+        if (r.p.teamId && s[r.p.teamId] !== undefined) s[r.p.teamId] += r.eff
       })
       return s
     }, [ranked, teams])
@@ -91,9 +98,9 @@ export function createScatterGame(config) {
     const atEnd = idx >= total - 1
     const typing = Object.keys(ansRaw || {}).length
 
-    const newTopic = (i) => dbUpdate(base, { idx: i, endsAt: null, ans: null, scored: null })
+    const newTopic = (i) => dbUpdate(base, { idx: i, endsAt: null, ans: null, scored: null, voided: null })
     const go = (d) => newTopic(Math.min(total - 1, Math.max(0, idx + d)))
-    const start = () => dbUpdate(base, { endsAt: Date.now() + sec * 1000, ans: null, scored: null })
+    const start = () => dbUpdate(base, { endsAt: Date.now() + sec * 1000, ans: null, scored: null, voided: null })
     const applyScore = async () => {
       const r = await dbTransaction(`${base}/scored`, (cur) => (cur ? undefined : true))
       if (!r.committed) return
@@ -109,7 +116,7 @@ export function createScatterGame(config) {
             {subsets.filter((s) => meta?.adultEnabled || !s.adult).map((s) => (
               <button
                 key={s.key}
-                onClick={() => dbSet(base, { subset: s.key, order: shuffle(s.cards.length), idx: 0, endsAt: null, ans: null, scored: null, mode, sec })}
+                onClick={() => dbSet(base, { subset: s.key, order: shuffle(s.cards.length), idx: 0, endsAt: null, ans: null, scored: null, voided: null, mode, sec })}
                 className="clay-btn py-5 font-display text-lg"
                 style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}
               >
@@ -159,7 +166,7 @@ export function createScatterGame(config) {
           <Button variant="ghost" onClick={() => go(-1)} disabled={idx === 0 || live}>◀ 이전</Button>
           {!live && <Button variant="ok" onClick={start}>{done ? '🔄 다시 (같은 주제)' : `⏱ ${sec}초 시작`}</Button>}
           {atEnd ? (
-            <Button variant="primary" onClick={() => dbUpdate(base, { order: shuffle(total), idx: 0, endsAt: null, ans: null, scored: null })} disabled={live}>🔀 다시 섞기</Button>
+            <Button variant="primary" onClick={() => dbUpdate(base, { order: shuffle(total), idx: 0, endsAt: null, ans: null, scored: null, voided: null })} disabled={live}>🔀 다시 섞기</Button>
           ) : (
             <Button variant="primary" onClick={() => go(1)} disabled={live}>다음 주제 ▶</Button>
           )}
@@ -189,12 +196,15 @@ export function createScatterGame(config) {
                     <span className="flex-1 min-w-0 truncate text-sm" style={{ color: 'var(--ink-soft)' }}>
                       {r.items.map((it) => it.text).join(', ')}
                     </span>
-                    <span className="font-display shrink-0" style={{ color: 'var(--c-mint)' }}>{r.uniq}점</span>
+                    <span className="font-display shrink-0" style={{ color: 'var(--c-mint)' }}>{r.eff}점</span>
                   </div>
                 ))}
                 {!ranked.length && <p className="text-sm py-2 text-center" style={{ color: 'var(--ink-soft)' }}>아무도 입력하지 않았어요.</p>}
               </div>
             )}
+
+            {/* 인정된 답 검수 — 주제와 안 맞는 답을 탭해서 무효(0점) */}
+            <VoidPicker res={res} byId={byId} voidedKeys={voidedKeys} base={base} disabled={!!scored} />
 
             {/* 겹친 답 — 이 게임의 핵심 재미 */}
             <Overlaps res={res} byId={byId} />

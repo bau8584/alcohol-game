@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { GAMES, gameById, GENRES, TRAITS, genreById, traitById } from '../games/registry'
 import { startGame, setRoundStatus, setPrompt, newRound, endGame, playBase } from '../lib/actions'
 import AwardPanel from './AwardPanel'
+import AdultToggle from './AdultToggle'
 import { Button, Card, PhaseTag, TeamBadge } from './ui'
 import { useDebounced } from '../lib/useDebounced'
 
@@ -43,9 +44,12 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
     const chipStyle = (active) => (active ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' })
     return (
       <Card>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
           <h2 className="font-display text-2xl">🎮 게임 선택</h2>
-          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>접속 {players.length}명</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <AdultToggle roomId={roomId} enabled={!!meta.adultEnabled} />
+            <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>접속 {players.length}명</span>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 mb-4">
           <button onClick={() => setFilter(null)} className={chip()} style={chipStyle(!filter)}>전체 {GAMES.length}</button>
@@ -97,7 +101,10 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
             <span className="font-display text-2xl">{game.emoji} {game.name}</span>
             <PhaseTag status={meta.roundStatus} />
           </div>
-          <Button variant="ghost" onClick={() => endGame(roomId)}>게임 목록</Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <AdultToggle roomId={roomId} enabled={!!meta.adultEnabled} />
+            <Button variant="ghost" onClick={() => endGame(roomId)}>게임 목록</Button>
+          </div>
         </div>
         {showPrompt && (
           <div className="flex gap-2 mb-3 flex-wrap">

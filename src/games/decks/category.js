@@ -132,6 +132,25 @@ const fun = T([
   '지하철 빌런 유형',
 ])
 
+const party = T([
+  '술게임 종류 대기',
+  'MT 필수 준비물',
+  '술자리 안주 메뉴',
+  '술 깨는 법 대기',
+  '술자리 금지 행동',
+  '2차로 갈 만한 곳',
+  '숙취 해장 메뉴',
+  '건배사 종류 대기',
+  '술자리 벌칙 종류',
+  '취한 사람 특징',
+  '술자리 최악의 빌런',
+  'MT에서 하는 게임',
+  '캠프파이어에서 할 것',
+  '술 마실 때 트는 노래',
+  '편의점 술안주 대기',
+  '술자리에서 나오는 흑역사',
+])
+
 const hard = T([
   '조선시대 왕 이름',
   '그리스·로마 신 이름',
@@ -198,6 +217,10 @@ const adultSpicy = T([
   '모텔에서 볼 수 있는 것',
   '연인끼리만 아는 은어',
   '성인 방송 클리셰 대기',
+  '침대에서 쓰는 은어',
+  '야한 코스프레 종류',
+  '성인용품 종류 대기',
+  '19금 체위 이름처럼 들리는 말',
 ])
 
 const adultHard = T([
@@ -213,6 +236,10 @@ const adultHard = T([
   '한 번쯤 해보고 싶은 일탈',
   '연인과 가보고 싶은 은밀한 장소',
   '평생 비밀로 하고 싶은 것',
+  '침대에서 들으면 설레는 말',
+  '해본 것 중 제일 야했던 장소',
+  '연인에게 시켜보고 싶은 것',
+  '술 취해 저지른 성인 실수담',
 ])
 
 export default createScatterGame({
@@ -230,6 +257,7 @@ export default createScatterGame({
     { key: 'know', label: '🌍 상식·지식', cards: know },
     { key: 'word', label: '🔤 말놀이', cards: word },
     { key: 'fun', label: '😆 아무말·넌센스', cards: fun },
+    { key: 'party', label: '🍻 MT·술자리', cards: party },
     { key: 'hard', label: '🔥 난이도 상', cards: hard },
     { key: 'adultDate', label: '🔞 연애·밀당', cards: adultDate, adult: true },
     { key: 'adultParty', label: '🔞 후끈 술자리', cards: adultParty, adult: true },

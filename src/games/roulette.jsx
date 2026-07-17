@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useValue, dbSet, dbUpdate, dbTransaction } from '../lib/db'
 import { Button } from '../components/ui'
 
-const MISSIONS = ['🍺 원샷', '🍺 한 잔', '🎤 노래', '💃 춤', '😘 뽀뽀', '🗣️ 자기소개', '🎯 다음 술래', '❓ 질문 받기', '🧹 뒷정리', '🤥 진실게임']
+const MISSIONS = ['🍺 원샷', '🍺 한 잔', '🎤 노래', '💃 춤', '😘 뽀뽀', '🗣️ 자기소개', '🎯 다음 술래', '❓ 질문 받기', '🧹 뒷정리', '🤥 진실게임', '🎭 성대모사', '🤝 러브샷', '📞 랜덤 전화', '🕺 벌칙 댄스', '🙊 비밀 폭로', '🤣 개인기']
 
 const shuffle = (arr) => {
   const a = [...arr]
