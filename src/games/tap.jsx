@@ -1,7 +1,7 @@
 // 연타 레이싱 — 팀전(팀별 1인당 평균) / 개인전(개인 순위) 선택. (부저에서 분리한 독립 게임)
 // 게임이 시작/일시정지/계속/새 레이스를 자체 컨트롤(controls.mode='self' → 프레임워크 바 숨김).
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useValue, dbUpdate, dbTransaction, toList } from '../lib/db'
+import { useValue, useChildList, dbUpdate, dbTransaction } from '../lib/db'
 import Countdown from '../components/Countdown'
 import ModeTabs from '../components/ModeTabs'
 import { Button } from '../components/ui'
@@ -21,7 +21,7 @@ function HostView({ base, players, teams }) {
   const endsAt = useValue(`${base}/endsAt`)
   const remainMs = useValue(`${base}/remainMs`)
   const raceSec = useValue(`${base}/raceSec`) || DEFAULT_SEC
-  const tapRaw = useValue(`${base}/tap`)
+  const tapList = useChildList(`${base}/tap`)
   const mode = useValue(`${base}/mode`) || 'team'
 
   // 종료 시점 감지용 로컬 시계 (진행 중일 때만 tick)
@@ -36,7 +36,7 @@ function HostView({ base, players, teams }) {
   const teamStats = useMemo(() => {
     const byId = Object.fromEntries(players.map((p) => [p.id, p]))
     const totals = {}
-    toList(tapRaw).forEach((t) => {
+    tapList.forEach((t) => {
       const tid = byId[t.id]?.teamId
       if (tid) totals[tid] = (totals[tid] || 0) + (t.value || 0)
     })
@@ -47,17 +47,17 @@ function HostView({ base, players, teams }) {
       s[t.id] = { total, n, avg: n ? total / n : 0 }
     })
     return s
-  }, [tapRaw, players, teams])
+  }, [tapList, players, teams])
   const teamMax = Math.max(1, ...teams.map((t) => teamStats[t.id]?.avg || 0))
 
   // 개인전: 개인별 연타수 내림차순 (입력 0인 사람은 제외)
   const solo = useMemo(() => {
     const byId = Object.fromEntries(players.map((p) => [p.id, p]))
-    return toList(tapRaw)
+    return tapList
       .map((t) => ({ id: t.id, name: byId[t.id]?.nickname || '?', teamId: byId[t.id]?.teamId, count: t.value || 0 }))
       .filter((r) => r.count > 0)
       .sort((a, b) => b.count - a.count)
-  }, [tapRaw, players])
+  }, [tapList, players])
 
   const timeUp = running && !paused && endsAt && nowTick >= endsAt
   const teamWinner = timeUp ? [...teams].sort((a, b) => (teamStats[b.id]?.avg || 0) - (teamStats[a.id]?.avg || 0))[0] : null

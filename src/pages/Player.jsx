@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
-import { joinRoom, setPlayerTeam, leaveRoom, playBase } from '../lib/actions'
+import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost } from '../lib/actions'
 import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
 import ItemBar from '../components/ItemBar'
+import HostConsole from '../components/HostConsole'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
 import { Button, Card, PhaseTag } from '../components/ui'
@@ -18,6 +19,7 @@ export default function Player() {
   const [nick, setNick] = useState(getSession().nickname || '')
   const [joinErr, setJoinErr] = useState('')
   const [joining, setJoining] = useState(false)
+  const [tab, setTab] = useState('play') // 진행자일 때만 사용: 'play' | 'host'
   const me = players.find((p) => p.id === playerId)
   const myTeam = teams.find((t) => t.id === me?.teamId)
 
@@ -35,7 +37,7 @@ export default function Player() {
   }
 
   useEffect(() => {
-    if (me) markPresence(roomPath(roomId, `players/${playerId}/connected`), true, false)
+    if (me) markPresence(roomPath(roomId, `presence/${playerId}`), true, false)
   }, [!!me, roomId, playerId])
 
   if (loading) return <Center>불러오는 중…</Center>
@@ -99,8 +101,10 @@ export default function Player() {
   // 3) 게임
   const game = meta.activeGameId ? gameById(meta.activeGameId) : null
   const base = game ? playBase(roomId, meta.roundSeq, game.id) : null
+  const iAmHost = !!meta.hostPlayerId && meta.hostPlayerId === playerId
+  const onHostTab = iAmHost && tab === 'host'
   return (
-    <div className="min-h-full p-4 max-w-md mx-auto space-y-3">
+    <div className={`min-h-full p-4 mx-auto space-y-3 ${onHostTab ? 'max-w-3xl' : 'max-w-md'}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <BackButton label="" />
@@ -108,24 +112,101 @@ export default function Player() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {game && <PhaseTag status={meta.roundStatus} />}
+          {!iAmHost && <HostClaim roomId={roomId} playerId={playerId} />}
           <button onClick={leaveAndReset} className="clay px-2.5 py-2 text-sm font-bold" style={{ background: 'var(--surface)', color: 'var(--ink)' }} title="나가기 · 접속 기록 지우기">🚪</button>
           <ThemeSwitcher />
         </div>
       </div>
-      <TeamScores teams={teams} myTeamId={myTeam?.id} />
-      <ItemBar me={me} team={myTeam} />
-      <div className="pt-2">
-        {game && base ? (
-          <game.PlayerView roomId={roomId} base={base} meta={meta} players={players} teams={teams} me={me} myTeam={myTeam} />
-        ) : (
-          <div className="text-center py-16" style={{ color: 'var(--ink-soft)' }}>
-            <div className="text-5xl mb-3 animate-pulse">⏳</div>
-            진행자가 게임을 고르는 중…
-            <div className="mt-1 text-sm">메인 화면을 봐주세요!</div>
+
+      {/* 진행자도 참가자 모드: 내 플레이 ↔ 진행 탭 */}
+      {iAmHost && (
+        <div className="flex gap-2">
+          {[
+            { id: 'play', label: '🎮 내 플레이' },
+            { id: 'host', label: '🖥 진행' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className="clay-btn flex-1 py-2.5 font-display"
+              style={tab === t.id ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {onHostTab ? (
+        <>
+          <HostConsole roomId={roomId} meta={meta} players={players} teams={teams} compact />
+          <button
+            onClick={async () => { if (confirm('진행자 권한을 내려놓을까요?')) { await releaseHost(roomId, playerId); setTab('play') } }}
+            className="w-full text-xs underline py-2"
+            style={{ color: 'var(--ink-soft)' }}
+          >
+            진행자 내려놓기
+          </button>
+        </>
+      ) : (
+        <>
+          <TeamScores teams={teams} myTeamId={myTeam?.id} />
+          <ItemBar me={me} team={myTeam} />
+          <div className="pt-2">
+            {game && base ? (
+              <game.PlayerView roomId={roomId} base={base} meta={meta} players={players} teams={teams} me={me} myTeam={myTeam} />
+            ) : (
+              <div className="text-center py-16" style={{ color: 'var(--ink-soft)' }}>
+                <div className="text-5xl mb-3 animate-pulse">⏳</div>
+                진행자가 게임을 고르는 중…
+                <div className="mt-1 text-sm">{iAmHost ? '🖥 진행 탭에서 게임을 고르세요!' : '메인 화면을 봐주세요!'}</div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </div>
+  )
+}
+
+// 참가자 폰에서 PIN 1회 입력해 '진행자 되기' — 성공하면 meta.hostPlayerId = 나.
+function HostClaim({ roomId, playerId }) {
+  const [ask, setAsk] = useState(false)
+  const [pin, setPin] = useState('')
+  const [err, setErr] = useState('')
+  const submit = async () => {
+    if (await claimHost(roomId, playerId, pin)) { setAsk(false); setPin(''); setErr('') }
+    else setErr('PIN이 달라요')
+  }
+  return (
+    <>
+      <button onClick={() => setAsk(true)} className="clay px-2.5 py-2 text-sm font-bold" style={{ background: 'var(--surface)', color: 'var(--ink)' }} title="진행자 되기 (PIN 필요)">🎛</button>
+      {ask && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={() => setAsk(false)}>
+          <div className="clay p-5 w-full max-w-sm text-center" style={{ background: 'var(--surface)' }} onClick={(e) => e.stopPropagation()}>
+            <div className="text-5xl">🎛</div>
+            <h3 className="font-display text-xl mt-2">진행자 되기</h3>
+            <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>
+              PIN을 넣으면 이 폰에서 <b>게임 진행 + 참여</b>를 같이 할 수 있어요.
+            </p>
+            <input
+              value={pin}
+              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setErr('') }}
+              inputMode="numeric"
+              placeholder="호스트 PIN"
+              autoFocus
+              className="clay-inset w-full px-4 py-3 text-center my-3"
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
+            />
+            {err && <p className="mb-2 font-bold" style={{ color: 'var(--c-coral)' }}>{err}</p>}
+            <div className="flex gap-2">
+              <Button className="flex-1" onClick={submit}>진행자 되기</Button>
+              <Button variant="ghost" className="flex-1" onClick={() => setAsk(false)}>취소</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -136,6 +217,7 @@ function TeamScores({ teams, myTeamId }) {
   const rankOf = (t) => teams.filter((x) => x.score > t.score).length
   return (
     <div className="clay p-2 flex flex-wrap items-center justify-center gap-1.5" style={{ background: 'var(--surface)' }}>
+      <span className="text-xs font-bold px-1" style={{ color: 'var(--ink-soft)' }}>🏆 팀 점수</span>
       {ranked.map((t) => {
         const medal = t.score > 0 ? MEDALS[rankOf(t)] : null
         const mine = t.id === myTeamId
@@ -147,7 +229,7 @@ function TeamScores({ teams, myTeamId }) {
           >
             {medal && <span>{medal}</span>}
             <span style={{ color: mine ? '#fff' : t.color }}>{t.name}</span>
-            <span className="tabular-nums" style={{ color: mine ? '#fff' : 'var(--ink)' }}>{t.score}</span>
+            <span className="tabular-nums" style={{ color: mine ? '#fff' : 'var(--ink)' }}>{t.score}점</span>
           </span>
         )
       })}

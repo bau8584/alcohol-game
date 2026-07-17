@@ -49,7 +49,7 @@ export function createRelayGame(config) {
   const subsetByKey = (k) => subsets.find((s) => s.key === k) || null
 
   /* ───────── 호스트 ───────── */
-  function HostView({ base }) {
+  function HostView({ base, meta }) {
     const subset = useValue(`${base}/subset`)
     const order = useValue(`${base}/order`)
     const idx = useValue(`${base}/idx`) || 0
@@ -62,7 +62,7 @@ export function createRelayGame(config) {
         <div className="text-center">
           <p className="font-display text-xl mb-4">{config.emoji} 어떤 주제 세트로 할까요?</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto">
-            {subsets.map((s) => (
+            {subsets.filter((s) => meta?.adultEnabled || !s.adult).map((s) => (
               <button
                 key={s.key}
                 onClick={() => dbSet(base, { subset: s.key, order: shuffle(s.cards.length), idx: 0, results: null, sw: { accum: 0, startedAt: Date.now() } })}

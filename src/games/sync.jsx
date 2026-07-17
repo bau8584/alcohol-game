@@ -109,7 +109,7 @@ function HostView({ base, meta, players }) {
           <div className="mb-3 max-w-md mx-auto text-left">
             <div className="flex gap-2 justify-center mb-2">
               <button onClick={() => roll(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 제시어">🎲 일반</button>
-              <button onClick={() => roll(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+              {meta.adultEnabled && <button onClick={() => roll(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
             </div>
             <div className="text-xs mb-1" style={{ color: 'var(--ink-soft)' }}>✏️ 주사위로 뽑은 뒤, 제시어·보기를 원하는 대로 고쳐도 돼요</div>
             <input value={draft.q} onChange={(e) => setQ(e.target.value)} placeholder="제시어 입력" className="clay-inset w-full px-3 py-2.5 text-center font-display" />

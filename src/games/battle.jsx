@@ -45,6 +45,10 @@ function HostView({ base, meta, players, teams }) {
   const q = useValue(`${base}/q`)
   const verdict = useValue(`${base}/verdict`) // 'minority' | 'majority' — 공개 순간 랜덤 확정
   const suggestions = toList(useValue(`${base}/suggestions`))
+  const nameOf = useMemo(() => {
+    const byId = Object.fromEntries(players.map((p) => [p.id, p.nickname]))
+    return (pid) => byId[pid] || '?'
+  }, [players])
   const raw = useValue(`${base}/choice`)
   const reveal = meta.roundStatus === 'reveal'
   const staged = meta.roundStatus === 'staged'
@@ -99,7 +103,7 @@ function HostView({ base, meta, players, teams }) {
             </div>
             <div className="flex gap-2 justify-center">
               <button onClick={() => rollFrom(PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲</button>
-              <button onClick={() => rollFrom(ADULT_PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+              {meta.adultEnabled && <button onClick={() => rollFrom(ADULT_PAIRS)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between">
@@ -110,7 +114,7 @@ function HostView({ base, meta, players, teams }) {
             {suggestions.map((s) => (
               <button key={s.id} onClick={() => pick(s.a, s.b)} className="clay-inset w-full px-3 py-2 flex items-center justify-between text-left">
                 <span><b>{s.a}</b> <span style={{ color: 'var(--ink-soft)' }}>vs</span> <b>{s.b}</b></span>
-                <span className="text-xs shrink-0 ml-2" style={{ color: 'var(--ink-soft)' }}>{s.by} · 고르기 →</span>
+                <span className="text-xs shrink-0 ml-2" style={{ color: 'var(--ink-soft)' }}>{nameOf(s.pid)} · 고르기 →</span>
               </button>
             ))}
             {!suggestions.length && <p className="text-sm py-2" style={{ color: 'var(--ink-soft)' }}>아직 제안이 없어요. 참가자가 질문을 던질 수 있어요.</p>}
@@ -186,7 +190,7 @@ function PlayerView({ base, meta, me }) {
   const [sent, setSent] = useState(false)
   const propose = () => {
     if (!pa.trim() || !pb.trim()) return
-    dbPush(`${base}/suggestions`, { a: pa.trim(), b: pb.trim(), by: me.nickname })
+    dbPush(`${base}/suggestions`, { a: pa.trim(), b: pb.trim(), pid: me.id })
     setPa(''); setPb(''); setSent(true); setTimeout(() => setSent(false), 1500)
   }
 

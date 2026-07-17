@@ -7,8 +7,13 @@ export function useRoom(roomId) {
   const meta = useValue(roomId ? roomPath(roomId, 'meta') : null)
   const playersRaw = useValue(roomId ? roomPath(roomId, 'players') : null)
   const teamsRaw = useValue(roomId ? roomPath(roomId, 'teams') : null)
+  // 접속상태는 players 와 분리된 presence 노드에서 (접속 깜빡임이 players 맵 전체를 재전송하지 않도록)
+  const presenceRaw = useValue(roomId ? roomPath(roomId, 'presence') : null)
 
-  const players = useMemo(() => toList(playersRaw), [playersRaw])
+  const players = useMemo(
+    () => toList(playersRaw).map((p) => ({ ...p, connected: presenceRaw?.[p.id] !== false })),
+    [playersRaw, presenceRaw]
+  )
 
   // 팀은 방 데이터에서 동적으로. 없으면 기본팀으로 폴백.
   const teams = useMemo(() => {

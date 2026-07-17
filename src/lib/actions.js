@@ -91,6 +91,23 @@ export async function checkHostPin(roomId, pin) {
   return String(real) === String(pin)
 }
 
+// ── 진행자도 참가자 모드 ────────────────────────
+// 참가자가 자기 폰에서 PIN을 넣어 '진행자'가 된다 → meta.hostPlayerId = 그 사람.
+// 마지막에 claim 한 사람이 진행자(= 진행자 이양). PIN이 틀리면 false.
+export async function claimHost(roomId, playerId, pin) {
+  if (!(await checkHostPin(roomId, pin))) return false
+  await dbUpdate(roomPath(roomId, 'meta'), { hostPlayerId: playerId })
+  return true
+}
+
+// 진행자 권한 내려놓기 (본인일 때만)
+export async function releaseHost(roomId, playerId) {
+  const cur = await dbGet(roomPath(roomId, 'meta/hostPlayerId'))
+  if (cur !== playerId) return false
+  await dbUpdate(roomPath(roomId, 'meta'), { hostPlayerId: null })
+  return true
+}
+
 // 닉네임 비교용 정규화: 앞뒤·중간 공백 제거 + 소문자 (표시는 원본 유지)
 const nickKey = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '')
 
@@ -185,6 +202,10 @@ export const setRoundStatus = (roomId, status) =>
 
 export const setPrompt = (roomId, prompt) =>
   dbUpdate(roomPath(roomId, 'meta'), { prompt })
+
+// ── 호스트: 19금(성인) 콘텐츠 허용 토글. 기본 OFF(방 생성/초기화 시 미설정=off) ──
+export const setAdultEnabled = (roomId, v) =>
+  dbUpdate(roomPath(roomId, 'meta'), { adultEnabled: !!v })
 
 export async function newRound(roomId) {
   // 같은 게임 유지, 상호작용 버킷만 새로 (roundSeq++ 로 자동 격리)

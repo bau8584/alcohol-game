@@ -59,7 +59,7 @@ function HostView({ base, meta, players }) {
           </div>
           <div className="flex gap-2 justify-center mt-2">
             <button onClick={() => rollFrom(SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 스펙트럼 뽑기</button>
-            <button onClick={() => rollFrom(ADULT_SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+            {meta.adultEnabled && <button onClick={() => rollFrom(ADULT_SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
           </div>
         </div>
       )}

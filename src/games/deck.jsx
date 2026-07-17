@@ -37,7 +37,7 @@ export function createDeckGame(config) {
   const subsetByKey = (k) => subsets.find((s) => s.key === k) || null
 
   /* ───────── 호스트 ───────── */
-  function HostView({ base, players }) {
+  function HostView({ base, meta, players }) {
     const subset = useValue(`${base}/subset`)
     const order = useValue(`${base}/order`)
     const idx = useValue(`${base}/idx`) || 0
@@ -51,7 +51,7 @@ export function createDeckGame(config) {
         <div className="text-center">
           <p className="font-display text-xl mb-4">{config.emoji} 어떤 세트로 할까요?</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto">
-            {subsets.map((s) => (
+            {subsets.filter((s) => meta?.adultEnabled || !s.adult).map((s) => (
               <button
                 key={s.key}
                 onClick={() => dbSet(base, { subset: s.key, order: shuffle(s.cards.length), idx: 0, revealed: false, actorId: null, endsAt: null })}

@@ -231,9 +231,9 @@ export default createRelayGame({
     { key: 'word', label: '🔤 말놀이', cards: word },
     { key: 'fun', label: '😆 아무말·넌센스', cards: fun },
     { key: 'hard', label: '🔥 난이도 상', cards: hard },
-    { key: 'adultDate', label: '🔞 연애·밀당', cards: adultDate },
-    { key: 'adultParty', label: '🔞 후끈 술자리', cards: adultParty },
-    { key: 'adultSpicy', label: '🔞 야릇·19금', cards: adultSpicy },
-    { key: 'adultHard', label: '🔞 진실게임 하드', cards: adultHard },
+    { key: 'adultDate', label: '🔞 연애·밀당', cards: adultDate, adult: true },
+    { key: 'adultParty', label: '🔞 후끈 술자리', cards: adultParty, adult: true },
+    { key: 'adultSpicy', label: '🔞 야릇·19금', cards: adultSpicy, adult: true },
+    { key: 'adultHard', label: '🔞 진실게임 하드', cards: adultHard, adult: true },
   ],
 })

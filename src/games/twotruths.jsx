@@ -18,7 +18,7 @@ const CATEGORIES = [
 ]
 const catByKey = (k) => CATEGORIES.find((c) => c.key === k) || CATEGORIES[0]
 
-function HostView({ base, players }) {
+function HostView({ base, meta, players }) {
   const mode = useValue(`${base}/mode`) || 'everyone'
   const category = useValue(`${base}/category`) || 'free'
   const entriesRaw = useValue(`${base}/entry`)
@@ -50,7 +50,7 @@ function HostView({ base, players }) {
       </div>
       {/* 카테고리 */}
       <div className="flex flex-wrap justify-center gap-1.5 mb-3">
-        {CATEGORIES.map((c) => (
+        {CATEGORIES.filter((c) => meta.adultEnabled || c.key !== 'adult').map((c) => (
           <button key={c.key} onClick={() => dbSet(`${base}/category`, c.key)} className="clay-btn px-2.5 py-1 text-sm" style={category === c.key ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{c.emoji} {c.label}</button>
         ))}
       </div>

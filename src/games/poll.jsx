@@ -85,7 +85,7 @@ function HostView({ base, meta, players, writePrompt }) {
           <input value={q} onChange={(e) => writeQ(e.target.value)} placeholder="예/아니오 질문 (직접 입력 또는 주사위)" className="clay-inset w-full px-3 py-2.5 text-center" />
           <div className="flex gap-2 mt-2 justify-center">
             <button onClick={() => rollFrom(NORMAL)} className="clay-btn px-4 py-2 font-display" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>🎲 일반</button>
-            <button onClick={() => rollFrom(ADULT)} className="clay-btn px-4 py-2 font-display" style={{ background: 'var(--c-coral)', color: '#fff' }}>🎲 19금</button>
+            {meta.adultEnabled && <button onClick={() => rollFrom(ADULT)} className="clay-btn px-4 py-2 font-display" style={{ background: 'var(--c-coral)', color: '#fff' }}>🎲 19금</button>}
           </div>
         </div>
       )}

@@ -56,6 +56,10 @@ function HostView({ base, meta, players, writePrompt }) {
   const raw = useValue(`${base}/pick`)
   const maxPick = useValue(`${base}/maxPick`) || 1
   const suggestions = toList(useValue(`${base}/suggestions`))
+  const nameOf = useMemo(() => {
+    const byId = Object.fromEntries(players.map((p) => [p.id, p.nickname]))
+    return (pid) => byId[pid] || '?'
+  }, [players])
   const ranked = useMemo(() => {
     const counts = {}
     Object.values(raw || {}).forEach((sel) => selectedIds(sel).forEach((tid) => (counts[tid] = (counts[tid] || 0) + 1)))
@@ -85,7 +89,7 @@ function HostView({ base, meta, players, writePrompt }) {
           <input value={q} onChange={(e) => writeQ(e.target.value)} placeholder="질문 (직접 입력 또는 주사위)" className="clay-inset w-full px-3 py-2.5 text-center" />
           <div className="flex gap-2 mt-2 justify-center">
             <button onClick={() => rollFrom(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲 일반</button>
-            <button onClick={() => rollFrom(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>
+            {meta.adultEnabled && <button onClick={() => rollFrom(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
           </div>
         </div>
       )}
@@ -102,7 +106,7 @@ function HostView({ base, meta, players, writePrompt }) {
                 >
                   쓰기
                 </button>
-                <span className="text-sm truncate">{s.text} <span style={{ color: 'var(--ink-soft)' }}>· {s.by}</span></span>
+                <span className="text-sm truncate">{s.text} <span style={{ color: 'var(--ink-soft)' }}>· {nameOf(s.pid)}</span></span>
               </div>
             ))}
           </div>
@@ -166,7 +170,7 @@ function PlayerView({ base, meta, players, me }) {
   const [openSug, setOpenSug] = useState(false)
   const suggest = () => {
     if (!sug.trim()) return
-    dbPush(`${base}/suggestions`, { text: sug.trim(), by: me.nickname, ts: Date.now() })
+    dbPush(`${base}/suggestions`, { text: sug.trim(), pid: me.id, ts: Date.now() })
     setSug('')
     setOpenSug(false)
   }

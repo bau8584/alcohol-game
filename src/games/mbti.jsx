@@ -6,18 +6,29 @@ import { useValue, dbSet, dbUpdate } from '../lib/db'
 import { Button } from '../components/ui'
 
 const AXES = [
-  { key: 'EI', desc: '에너지', a: 'E', b: 'I', an: 'E · 외향', bn: 'I · 내향' },
-  { key: 'NS', desc: '인식', a: 'N', b: 'S', an: 'N · 직관', bn: 'S · 감각' },
-  { key: 'TF', desc: '판단', a: 'T', b: 'F', an: 'T · 사고', bn: 'F · 감정' },
-  { key: 'PJ', desc: '생활', a: 'P', b: 'J', an: 'P · 인식', bn: 'J · 판단' },
+  { key: 'EI', desc: '에너지 방향', a: 'E', b: 'I', an: 'E · 외향', bn: 'I · 내향', ad: '사람들과 어울리며 충전', bd: '혼자만의 시간에 충전' },
+  { key: 'NS', desc: '인식 방식', a: 'N', b: 'S', an: 'N · 직관', bn: 'S · 감각', ad: '가능성·상상·큰 그림', bd: '현실·오감·구체적 사실' },
+  { key: 'TF', desc: '판단 기준', a: 'T', b: 'F', an: 'T · 사고', bn: 'F · 감정', ad: '논리·객관·원칙 중심', bd: '공감·관계·사람 중심' },
+  { key: 'PJ', desc: '생활 양식', a: 'P', b: 'J', an: 'P · 인식', bn: 'J · 판단', ad: '즉흥·유연·자유로움', bd: '계획·정리·마감 준수' },
 ]
 const mbtiOf = (ans) => (ans ? AXES.map((x) => ans[x.key] || '?').join('') : '????')
+
+// 16유형 별칭(간단 설명) + 유형의 4축 성향 요약
+const TYPES = {
+  INTJ: '용의주도한 전략가', INTP: '논리적인 사색가', ENTJ: '대담한 통솔자', ENTP: '뜨거운 논쟁가',
+  INFJ: '선의의 옹호자', INFP: '열정적인 중재자', ENFJ: '정의로운 사회운동가', ENFP: '재기발랄한 활동가',
+  ISTJ: '청렴결백한 논리주의자', ISFJ: '용감한 수호자', ESTJ: '엄격한 관리자', ESFJ: '사교적인 외교관',
+  ISTP: '만능 재주꾼', ISFP: '호기심 많은 예술가', ESTP: '모험을 즐기는 사업가', ESFP: '자유로운 영혼의 연예인',
+}
+const typeName = (ans) => TYPES[mbtiOf(ans)] || ''
+// 각 축에서 고른 쪽의 성향 키워드 (예: ['외향','직관','감정','인식'])
+const polesOf = (ans) => AXES.map((ax) => (ans[ax.key] === ax.a ? ax.an : ax.bn).split(' · ')[1] || '?')
 
 // 두 갈래 선택 버튼 (a / b)
 function AxisButtons({ ax, value, onPick, disabled }) {
   return (
     <div className="grid grid-cols-2 gap-2">
-      {[['a', 'an', 'var(--c-sky)'], ['b', 'bn', 'var(--c-pink)']].map(([slot, labelKey, color]) => {
+      {[['a', 'an', 'ad', 'var(--c-sky)'], ['b', 'bn', 'bd', 'var(--c-pink)']].map(([slot, labelKey, descKey, color]) => {
         const v = ax[slot]
         const on = value === v
         return (
@@ -25,10 +36,11 @@ function AxisButtons({ ax, value, onPick, disabled }) {
             key={v}
             onClick={() => !disabled && onPick(v)}
             disabled={disabled}
-            className="clay-btn py-4 font-display text-lg disabled:opacity-60"
+            className="clay-btn py-3 px-2 disabled:opacity-60"
             style={on ? { background: color, color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}
           >
-            {ax[labelKey]}
+            <div className="font-display text-lg">{ax[labelKey]}</div>
+            <div className="text-xs font-normal mt-0.5 leading-tight" style={{ color: on ? '#fff' : 'var(--ink-soft)', opacity: on ? 0.9 : 1 }}>{ax[descKey]}</div>
           </button>
         )
       })}
@@ -90,6 +102,8 @@ function HostView({ base, players }) {
       <div className="text-center">
         <div style={{ color: 'var(--ink-soft)' }}>{subject?.nickname} 님의 MBTI</div>
         <div className="font-display text-6xl mt-1 tracking-widest animate-pop">{mbtiOf(answer)}</div>
+        {typeName(answer) && <div className="mt-1 font-display text-2xl" style={{ color: 'var(--c-grape)' }}>“{typeName(answer)}”</div>}
+        <div className="text-sm mt-0.5" style={{ color: 'var(--ink-soft)' }}>{polesOf(answer).join(' · ')}</div>
         {allPerfect ? (
           <div className="mt-3 font-display text-2xl" style={{ color: 'var(--c-coral)' }}>🍺 전원 정답! 질문자 <b>{subject?.nickname}</b> 벌칙 (너무 뻔함)</div>
         ) : (
@@ -124,7 +138,9 @@ function HostView({ base, players }) {
     <div className="text-center">
       <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>질문자 <b style={{ color: 'var(--ink)' }}>{subject?.nickname}</b> · 축 {step + 1}/4 · {ax.desc}</div>
       <div className="font-display text-3xl mt-1">{ax.an} <span style={{ color: 'var(--ink-soft)' }}>vs</span> {ax.bn}</div>
-      <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>{answered}/{guessers.length} 응답 · {ax.a} {aCount} · {ax.b} {bCount}</div>
+      <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>
+        {answered}/{guessers.length} 응답{shown ? ` · ${ax.a} ${aCount} · ${ax.b} ${bCount}` : ' · 분포는 공개 때 🔒'}
+      </div>
 
       {!shown ? (
         <Button className="mt-4" variant="warn" onClick={() => dbSet(`${base}/shown`, true)}>👁 이 축 공개</Button>
@@ -215,6 +231,8 @@ function PlayerView({ base, meta, players, me }) {
       <div className="text-center py-8">
         <div className="text-6xl">{perfect ? '🎯' : c === 0 ? '💀' : '🍺'}</div>
         <p className="mt-3 font-display text-2xl">{subject?.nickname} = {mbtiOf(answer)}</p>
+        {typeName(answer) && <p className="font-display text-lg" style={{ color: 'var(--c-grape)' }}>“{typeName(answer)}”</p>}
+        <p className="text-xs" style={{ color: 'var(--ink-soft)' }}>{polesOf(answer).join(' · ')}</p>
         <p className="mt-2 font-display text-xl" style={{ color: perfect ? 'var(--c-mint)' : 'var(--c-coral)' }}>내 정답 {c}/4 {perfect ? '· 완벽!' : '· 벌칙 🍺'}</p>
       </div>
     )

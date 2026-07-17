@@ -3,7 +3,7 @@
 import buzzer from './buzzer.jsx'
 import tap from './tap.jsx'
 import pick from './pick.jsx'
-import teamsync from './teamsync.jsx'
+import herd from './herd.jsx'
 import eunchi from './eunchi.jsx'
 import spy from './spy.jsx'
 import battle from './battle.jsx'
@@ -22,7 +22,7 @@ import mission from './mission.jsx'
 import twotruths from './twotruths.jsx'
 import mbti from './mbti.jsx'
 
-export const GAMES = [buzzer, tap, pick, teamsync, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, twotruths, mbti]
+export const GAMES = [buzzer, tap, pick, herd, eunchi, spy, battle, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, twotruths, mbti]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 
