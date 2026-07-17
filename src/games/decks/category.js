@@ -1,6 +1,7 @@
-// 줄줄이 말해요 — 진행자가 낸 주제로 참가자가 돌아가며 항목을 계속 대는 게임.
-// 스톱워치(카운트업)로 시간 재고, 호스트가 ⭕맞음/⏭패스 판정 + 현재 주제·집계 표시.
-import { createRelayGame } from '../catrelay.jsx'
+// 줄줄이 말해요 — 주제 하나로 전원이 동시에 폰에 나열하는 스피드 게임.
+// 남과 겹친 답은 0점, 나만 쓴 답만 +1점이라 '많이'보다 '남들이 생각 못 한 걸' 써야 이긴다.
+// 호스트 판정 없음(자동 집계). 주제 덱은 그대로 재활용.
+import { createScatterGame } from '../scatter.jsx'
 
 // 문자열 배열 → 카드 배열
 const T = (arr) => arr.map((text) => ({ text }))
@@ -214,14 +215,13 @@ const adultHard = T([
   '평생 비밀로 하고 싶은 것',
 ])
 
-export default createRelayGame({
+export default createScatterGame({
   id: 'category',
   name: '줄줄이 말해요',
   emoji: '🔗',
-  tagline: '스톱워치 스피드 · 호스트 판정',
+  tagline: '전원 동시 입력 · 겹치면 0점',
   genres: ['brain'],
-  traits: ['team'],
-  guide: '현재 주제를 돌아가며 외쳐요! 판정은 호스트가 🍺',
+  traits: ['team', 'solo'],
   subsets: [
     { key: 'food', label: '🍔 먹거리', cards: food },
     { key: 'life', label: '🏠 일상·사물', cards: life },

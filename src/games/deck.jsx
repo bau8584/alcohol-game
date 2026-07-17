@@ -7,10 +7,15 @@
 //   target: 'host' | 'actor',        // 카드가 어디에 뜨는가
 //   timer: 초 | null,                 // 있으면 타이머 버튼 노출
 //   guide: '플레이어 대기 안내문',
+//   collect: { perPlayer, placeholder } | null,  // 참가자가 제시어를 직접 채우는 모드
 //   subsets: [{ key, label, cards: [{ hint?, text?, answer? }] }],
 // }
 // card 필드: hint=붉은 글자(말해도 됨) / text=항상 보이는 제시어 / answer=정답(공개 전 숨김)
-import { useValue, dbSet, dbUpdate } from '../lib/db'
+//
+// 고정 덱은 한 번 돌면 정답을 다 알아버리는 소모성이라, collect가 있으면
+// '🙋 우리끼리 제시어'로 참가자가 각자 폰에 넣은 걸 섞어서 덱을 만들 수 있다.
+import { useMemo, useState } from 'react'
+import { useValue, dbSet, dbUpdate, dbPush, dbRemove, toList } from '../lib/db'
 import Countdown from '../components/Countdown'
 import { Button } from '../components/ui'
 
@@ -32,8 +37,10 @@ function HintPill({ hint }) {
   )
 }
 
+const OWN = '__own' // 참가자가 채운 덱
+
 export function createDeckGame(config) {
-  const { target = 'host', timer = null, subsets, guide } = config
+  const { target = 'host', timer = null, subsets, guide, collect = null } = config
   const subsetByKey = (k) => subsets.find((s) => s.key === k) || null
 
   /* ───────── 호스트 ───────── */
@@ -44,12 +51,52 @@ export function createDeckGame(config) {
     const revealed = useValue(`${base}/revealed`)
     const actorId = useValue(`${base}/actorId`)
     const endsAt = useValue(`${base}/endsAt`)
+    const collecting = useValue(`${base}/collecting`)
+    const poolRaw = useValue(`${base}/pool`)
+    const ownCards = useValue(`${base}/ownCards`)
+
+    const pool = useMemo(() => toList(poolRaw), [poolRaw])
+    const contributors = useMemo(() => new Set(pool.map((c) => c.pid)).size, [pool])
+
+    // 참가자 제시어 수집 중
+    if (collecting) {
+      const build = () => {
+        const cards = shuffle(pool.length).map((i) => ({ answer: pool[i].t }))
+        dbSet(base, { subset: OWN, ownCards: cards, order: shuffle(cards.length), idx: 0, revealed: false, actorId: null, endsAt: null })
+      }
+      return (
+        <div className="text-center">
+          <p className="font-display text-2xl">🙋 각자 폰에 제시어를 넣어주세요!</p>
+          <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>
+            1인당 최대 {collect.perPlayer}개 · 내용은 아무에게도 안 보여요 🤫
+          </p>
+          <div className="clay-inset mt-4 py-8">
+            <div className="font-display text-6xl">{pool.length}<span className="text-2xl" style={{ color: 'var(--ink-soft)' }}>장</span></div>
+            <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>{contributors}명이 참여했어요</div>
+          </div>
+          <div className="flex justify-center gap-2 mt-4">
+            <Button variant="ghost" onClick={() => dbSet(base, null)}>취소</Button>
+            <Button variant="ok" onClick={build} disabled={!pool.length}>🎬 이걸로 시작 ({pool.length}장)</Button>
+          </div>
+        </div>
+      )
+    }
 
     // 세트 선택 전
     if (!subset) {
       return (
         <div className="text-center">
           <p className="font-display text-xl mb-4">{config.emoji} 어떤 세트로 할까요?</p>
+          {collect && (
+            <button
+              onClick={() => dbSet(base, { collecting: true })}
+              className="clay-btn py-4 px-6 font-display text-xl mb-3 w-full max-w-2xl mx-auto block"
+              style={{ background: 'var(--c-grape)', color: '#fff' }}
+            >
+              🙋 우리끼리 제시어로 하기
+              <div className="text-xs mt-1 opacity-90">참가자가 직접 채운 덱 · 매번 새로움</div>
+            </button>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-2xl mx-auto">
             {subsets.filter((s) => meta?.adultEnabled || !s.adult).map((s) => (
               <button
@@ -67,7 +114,7 @@ export function createDeckGame(config) {
       )
     }
 
-    const deck = subsetByKey(subset)
+    const deck = subset === OWN ? { label: '🙋 우리끼리', cards: ownCards || [] } : subsetByKey(subset)
     const cards = deck?.cards || []
     const total = order?.length || 0
     const cur = cards[order?.[idx]]
@@ -155,6 +202,52 @@ export function createDeckGame(config) {
     const idx = useValue(`${base}/idx`) || 0
     const actorId = useValue(`${base}/actorId`)
     const endsAt = useValue(`${base}/endsAt`)
+    const collecting = useValue(`${base}/collecting`)
+    const poolRaw = useValue(`${base}/pool`)
+    const ownCards = useValue(`${base}/ownCards`)
+    const [text, setText] = useState('')
+
+    const mine = useMemo(() => toList(poolRaw).filter((c) => c.pid === me.id), [poolRaw, me.id])
+
+    // 제시어 수집 중 — 내가 넣은 것만 보이고, 남의 것은 안 보인다.
+    if (collecting) {
+      const left = collect.perPlayer - mine.length
+      const add = () => {
+        const t = text.trim()
+        if (!t || left <= 0) return
+        dbPush(`${base}/pool`, { t, pid: me.id })
+        setText('')
+      }
+      return (
+        <div className="text-center">
+          <p className="font-display text-xl">🙋 제시어를 넣어주세요</p>
+          <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>
+            {left > 0 ? `${left}개 더 넣을 수 있어요` : '다 넣었어요! 호스트를 기다려주세요'}
+          </p>
+          {left > 0 && (
+            <>
+              <input
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                className="mt-3 w-full clay-inset px-4 py-4 text-xl text-center"
+                placeholder={collect.placeholder || '제시어 입력'}
+                onKeyDown={(e) => e.key === 'Enter' && add()}
+              />
+              <Button className="mt-2 w-full" onClick={add} disabled={!text.trim()}>추가</Button>
+            </>
+          )}
+          <div className="mt-4 space-y-1.5">
+            {mine.map((c) => (
+              <div key={c.id} className="clay-inset px-3 py-2 flex items-center gap-2">
+                <span className="flex-1 min-w-0 truncate text-left">{c.t}</span>
+                <button onClick={() => dbRemove(`${base}/pool/${c.id}`)} className="text-sm shrink-0" style={{ color: 'var(--c-coral)' }}>삭제</button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs" style={{ color: 'var(--ink-soft)' }}>내가 낸 제시어가 나한테 걸릴 수도 있어요 😈</p>
+        </div>
+      )
+    }
 
     if (!subset) {
       return (
@@ -198,7 +291,7 @@ export function createDeckGame(config) {
     }
 
     // 내가 연기자
-    const deck = subsetByKey(subset)
+    const deck = subset === OWN ? { cards: ownCards || [] } : subsetByKey(subset)
     const cards = deck?.cards || []
     const total = order?.length || 0
     const cur = cards[order?.[idx]]

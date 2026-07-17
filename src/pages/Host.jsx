@@ -77,6 +77,7 @@ export default function Host() {
             <span style={{ color: 'var(--ink-soft)' }}>방 코드 </span>
             <span className="font-display text-3xl tracking-widest">{roomId}</span>
             <span className="ml-3 text-sm" style={{ color: 'var(--ink-soft)' }}>참가: {joinUrl}</span>
+            <span className="ml-3 text-sm" style={{ color: 'var(--ink-soft)' }}>📺 화면: {location.origin}/tv/{roomId}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">

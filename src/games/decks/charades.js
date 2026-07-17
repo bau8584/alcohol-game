@@ -68,6 +68,8 @@ export default createDeckGame({
   traits: ['team'],
   target: 'actor',
   timer: 60,
+  // 고정 덱은 한 번 돌면 소모되니, 참가자가 직접 채운 덱으로도 할 수 있게
+  collect: { perPlayer: 3, placeholder: '예: 손흥민, 문어, 번지점프' },
   subsets: [
     { key: 'A', label: 'A세트', cards: A },
     { key: 'B', label: 'B세트', cards: B },

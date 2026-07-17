@@ -1,0 +1,197 @@
+// 치킨게임 — 모두가 같은 숫자를 본다. 시작하면 초가 올라가고, 언제 터질지는 아무도 모른다.
+// 멈추면 그 시간이 내 점수. 안 멈추고 버티다 폭발하면 0점 + 벌칙.
+// 오래 버틸수록 이득이지만 폭탄은 3초~최대초 사이 랜덤. 하나둘 빠지는 게 화면에 실시간으로 보인다.
+import { useEffect, useMemo, useState } from 'react'
+import { useValue, dbSet, dbUpdate, toList } from '../lib/db'
+import { Button } from '../components/ui'
+
+const MIN_MS = 3000
+const MAXES = [10, 15, 20, 30]
+const DEFAULT_MAX = 15
+const MEDALS = ['🥇', '🥈', '🥉']
+
+const fmt = (ms) => (Math.max(0, ms) / 1000).toFixed(2)
+
+// 진행 중일 때만 도는 로컬 시계
+function useTicker(on) {
+  const [now, setNow] = useState(Date.now())
+  useEffect(() => {
+    if (!on) return
+    let raf = 0
+    const loop = () => {
+      setNow(Date.now())
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [on])
+  return now
+}
+
+// 뱅크 기록 → 순위 (터진 뒤에 들어온 기록은 무효)
+function useBoard(base, players, boomMs) {
+  const raw = useValue(`${base}/bank`)
+  return useMemo(() => {
+    const byId = Object.fromEntries(players.map((p) => [p.id, p]))
+    const banked = toList(raw)
+      .filter((b) => boomMs == null || b.value < boomMs)
+      .map((b) => ({ id: b.id, ms: b.value, name: byId[b.id]?.nickname || '?', teamId: byId[b.id]?.teamId }))
+      .sort((a, b) => b.ms - a.ms)
+    const bankedIds = new Set(banked.map((b) => b.id))
+    const live = players.filter((p) => p.connected !== false)
+    return { banked, bankedIds, holding: live.filter((p) => !bankedIds.has(p.id)) }
+  }, [raw, players, boomMs])
+}
+
+function HostView({ base, players, teams }) {
+  const startedAt = useValue(`${base}/startedAt`)
+  const boomAt = useValue(`${base}/boomAt`)
+  const boomedAt = useValue(`${base}/boomedAt`)
+  const maxSec = useValue(`${base}/maxSec`) || DEFAULT_MAX
+  const boomMs = boomedAt && startedAt ? boomedAt - startedAt : null
+  const { banked, holding } = useBoard(base, players, boomMs)
+
+  const running = !!startedAt && !boomedAt
+  const now = useTicker(running)
+
+  // 폭발 시점이 지나면 호스트가 한 번 확정 기록 → 모든 화면이 같은 값을 본다
+  useEffect(() => {
+    if (running && boomAt && now >= boomAt) dbSet(`${base}/boomedAt`, boomAt)
+  }, [running, boomAt, now, base])
+
+  const start = () =>
+    dbUpdate(base, {
+      startedAt: Date.now(),
+      boomAt: Date.now() + MIN_MS + Math.floor(Math.random() * (maxSec * 1000 - MIN_MS)),
+      boomedAt: null,
+      bank: null,
+    })
+  const reset = () => dbUpdate(base, { startedAt: null, boomAt: null, boomedAt: null, bank: null })
+
+  const idle = !startedAt
+  const elapsed = startedAt ? (boomedAt ? boomedAt - startedAt : now - startedAt) : 0
+  const teamColor = (tid) => teams.find((t) => t.id === tid)?.color || 'var(--ink)'
+
+  return (
+    <div className="text-center">
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button variant="ok" onClick={start}>💣 시작</Button>
+        <Button variant="ghost" onClick={reset}>🔄 새 라운드</Button>
+      </div>
+
+      {idle ? (
+        <div className="mt-4">
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>폭탄 최대 시간 (3초~최대초 사이 랜덤)</div>
+          <div className="flex justify-center gap-2">
+            {MAXES.map((s) => (
+              <button key={s} onClick={() => dbSet(`${base}/maxSec`, s)} className="clay-btn px-4 py-2 font-display"
+                style={maxSec === s ? { background: 'var(--c-coral)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
+                {s}초
+              </button>
+            ))}
+          </div>
+          <p className="mt-4 font-display text-xl" style={{ color: 'var(--ink-soft)' }}>버틸수록 점수 ↑ · 터지면 0점 🍺</p>
+        </div>
+      ) : (
+        <div className="mt-4">
+          <div className="font-display tabular-nums" style={{ fontSize: '5rem', lineHeight: 1, color: boomedAt ? 'var(--c-coral)' : 'var(--ink)' }}>
+            {fmt(elapsed)}
+          </div>
+          {boomedAt ? (
+            <div className="mt-2 font-display text-4xl animate-pop" style={{ color: 'var(--c-coral)' }}>💥 펑!</div>
+          ) : (
+            <div className="mt-2" style={{ color: 'var(--ink-soft)' }}>버티는 중 {holding.length}명 · 멈춤 {banked.length}명</div>
+          )}
+        </div>
+      )}
+
+      {!idle && (
+        <div className="mt-4 max-w-lg mx-auto text-left space-y-1.5">
+          {banked.map((b, i) => (
+            <div key={b.id} className="clay flex items-center justify-between px-4 py-2"
+              style={boomedAt && i === 0 ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--surface)' }}>
+              <span className="font-display">
+                <span className="w-8 inline-block">{boomedAt ? MEDALS[i] || i + 1 : '✋'}</span>
+                <span style={{ color: boomedAt && i === 0 ? '#fff' : teamColor(b.teamId) }}>{b.name}</span>
+              </span>
+              <span className="font-display tabular-nums">{fmt(b.ms)}초</span>
+            </div>
+          ))}
+          {!banked.length && !boomedAt && <p className="py-4 text-center" style={{ color: 'var(--ink-soft)' }}>아직 아무도 안 멈췄어요… 🫣</p>}
+
+          {boomedAt && (
+            <div className="clay p-3 mt-3" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+              <div className="font-display text-lg">💥 터질 때까지 버틴 사람 · {holding.length}명 벌칙</div>
+              <div className="text-sm mt-1 opacity-90">{holding.map((p) => p.nickname).join(', ') || '전원 탈출 성공!'}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PlayerView({ base, players, me }) {
+  const startedAt = useValue(`${base}/startedAt`)
+  const boomedAt = useValue(`${base}/boomedAt`)
+  const mine = useValue(`${base}/bank/${me.id}`)
+  const boomMs = boomedAt && startedAt ? boomedAt - startedAt : null
+  const { banked, holding } = useBoard(base, players, boomMs)
+
+  const live = !!startedAt && !boomedAt
+  const now = useTicker(live && mine == null)
+  const active = live && mine == null
+  const caught = !!boomedAt && mine == null
+  const elapsed = mine != null ? mine : startedAt ? (boomedAt ? boomedAt - startedAt : now - startedAt) : 0
+
+  const bank = () => {
+    if (!active) return
+    dbSet(`${base}/bank/${me.id}`, Date.now() - startedAt)
+    if (navigator.vibrate) navigator.vibrate(40)
+  }
+
+  let label = '대기'
+  if (caught) label = '💥 터졌다!'
+  else if (mine != null) label = boomedAt ? '✅ 탈출 성공' : '✋ 멈춤'
+  else if (active) label = '✋ 멈추기!'
+
+  const bg = caught ? 'var(--c-coral)' : mine != null ? 'var(--c-mint)' : active ? 'var(--c-grape)' : 'var(--surface-2)'
+  const myRank = mine != null ? banked.findIndex((b) => b.id === me.id) + 1 : 0
+
+  return (
+    <div className="text-center">
+      <div style={{ color: 'var(--ink-soft)' }}>
+        {startedAt ? (boomedAt ? '라운드 종료' : `버티는 중 ${holding.length}명 · 멈춤 ${banked.length}명`) : '진행자 대기 중'}
+      </div>
+      <button onPointerDown={bank} disabled={!active}
+        className="mt-3 w-full h-72 rounded-3xl clay-btn transition-colors flex flex-col items-center justify-center"
+        style={{ background: bg, color: startedAt ? '#fff' : 'var(--ink-soft)' }}>
+        <div className="font-display text-6xl tabular-nums">{fmt(elapsed)}</div>
+        <div className="font-display text-3xl mt-3">{label}</div>
+      </button>
+      {caught ? (
+        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>끝까지 버티다 터졌어요 · 벌칙 🍺</p>
+      ) : mine != null ? (
+        <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>
+          {fmt(mine)}초에 탈출 · 현재 {myRank}위 {boomedAt ? '' : '· 남은 사람들이 더 버티면 밀립니다'}
+        </p>
+      ) : active ? (
+        <p className="mt-3 text-sm" style={{ color: 'var(--c-coral)' }}>조금만 더… 조금만 더… 🫣</p>
+      ) : (
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>오래 버틸수록 고득점 · 터지면 0점 🍺</p>
+      )}
+    </div>
+  )
+}
+
+export default {
+  id: 'chicken',
+  name: '치킨게임',
+  emoji: '💣',
+  tagline: '버틸수록 고득점 · 터지면 벌칙',
+  genres: ['physical', 'mind'],
+  traits: ['solo'],
+  controls: { prompt: false, mode: 'self' },
+  HostView,
+  PlayerView,
+}

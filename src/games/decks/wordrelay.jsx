@@ -1,8 +1,9 @@
 // 이어 말하기 — 호스트 화면에 '앞 2글자'(또는 속담 앞부분)를 띄우면, 참가자가 각자 폰으로 나머지를 입력.
-// 제출은 호스트 화면에 도착 순서대로 뜨고, 호스트가 맞힌 제출을 눌러 그 팀에 +1점을 준다.
+// 채점은 자동: 제출을 정답과 문자열 비교해서 서버 ts 기준 첫 정답자의 팀에 +1을 준다(호스트는 안 눌러도 됨).
+// 오답이면 참가자가 다시 낼 수 있고, 1등이 나오면 정답이 자동 공개된다.
 // 단어형 세트: text=앞 2글자(보임) / answer=나머지(정답). 속담형: text=앞부분 / answer=뒷부분.
 import { useEffect, useMemo, useState } from 'react'
-import { useValue, dbSet, dbUpdate, toList } from '../../lib/db'
+import { useValue, dbSet, dbUpdate, dbTransaction, toList, SERVER_TS } from '../../lib/db'
 import { addTeamScore } from '../../lib/actions'
 import { Button } from '../../components/ui'
 
@@ -103,6 +104,17 @@ const SUBSETS = [
 const subsetByKey = (k) => SUBSETS.find((s) => s.key === k) || null
 const norm = (s) => (s || '').trim().toLowerCase().replace(/\s+/g, '')
 
+// 카드 → 정답 판별 함수. 뒷부분만 써도, 통째로 써도 정답 인정.
+const matcher = (card) => {
+  if (!card) return () => false
+  const full = norm((card.text || '') + (card.answer || ''))
+  const tail = norm(card.answer)
+  return (t) => {
+    const n = norm(t)
+    return !!n && (n === tail || n === full)
+  }
+}
+
 const shuffle = (n) => {
   const a = Array.from({ length: n }, (_, i) => i)
   for (let i = a.length - 1; i > 0; i--) {
@@ -122,10 +134,38 @@ function HostView({ roomId, base, players, teams }) {
   const idx = useValue(`${base}/idx`) || 0
   const revealed = useValue(`${base}/revealed`)
   const ansRaw = useValue(`${base}/ans`)
-  const awarded = useValue(`${base}/awarded`) || {}
+  const awarded = useValue(`${base}/awarded`) // 1등 정답자 pid
 
   const teamById = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t])), [teams])
   const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
+
+  // 훅은 조기 반환 위에서 전부 계산 (subset 없으면 cur가 undefined일 뿐)
+  const curDeck = subsetByKey(subset)
+  const curCard = curDeck?.cards?.[order?.[idx]]
+  const match = matcher(curCard)
+  const submissions = useMemo(
+    () =>
+      toList(ansRaw)
+        .map((a) => ({ id: a.id, text: a.text, ts: a.ts, p: byId[a.id] }))
+        .filter((a) => a.p && typeof a.ts === 'number')
+        .sort((x, y) => x.ts - y.ts),
+    [ansRaw, byId]
+  )
+  const winner = submissions.find((s) => match(s.text)) || null
+
+  // 자동 채점 — 첫 정답자에게 팀 +1. 호스트 화면이 여러 개여도 트랜잭션으로 1회만.
+  // cur가 있으면 중단(undefined 반환 → 커밋 안 됨)이라 '내가 방금 잠갔을 때'만 점수를 준다.
+  // 취소 가드(alive)를 두면 안 된다: 트랜잭션의 로컬 반영으로 awarded가 즉시 바뀌면서
+  // await가 끝나기 전에 cleanup이 돌아 지급이 통째로 스킵된다. 중복은 트랜잭션이 막아준다.
+  useEffect(() => {
+    if (!winner || awarded) return
+    ;(async () => {
+      const res = await dbTransaction(`${base}/awarded`, (cur) => (cur ? undefined : winner.id))
+      if (!res.committed || res.snapshot.val() !== winner.id) return
+      dbSet(`${base}/revealed`, true)
+      if (winner.p.teamId) addTeamScore(roomId, winner.p.teamId, 1)
+    })()
+  }, [winner?.id, winner?.p?.teamId, awarded, base, roomId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // 세트 선택 전
   if (!subset) {
@@ -149,26 +189,13 @@ function HostView({ roomId, base, players, teams }) {
     )
   }
 
-  const deck = subsetByKey(subset)
-  const cards = deck?.cards || []
+  const deck = curDeck
   const total = order?.length || 0
-  const cur = cards[order?.[idx]]
+  const cur = curCard
   const atEnd = idx >= total - 1
-  const full = cur ? (cur.text || '') + (cur.answer || '') : ''
-
-  const submissions = toList(ansRaw)
-    .map((a) => ({ id: a.id, text: a.text, ts: a.ts, p: byId[a.id] }))
-    .filter((a) => a.p)
-    .sort((x, y) => (x.ts || 0) - (y.ts || 0))
 
   const go = (d) => dbUpdate(base, { idx: Math.min(total - 1, Math.max(0, idx + d)), ...resetCard() })
   const reshuffle = () => dbUpdate(base, { order: shuffle(total), idx: 0, ...resetCard() })
-  const award = (s) => {
-    if (!s.p?.teamId || awarded[s.id]) return
-    addTeamScore(roomId, s.p.teamId, 1)
-    dbSet(`${base}/awarded/${s.id}`, true)
-  }
-  const isMatch = (t) => cur && (norm(t) === norm(cur.answer) || norm(t) === norm(full))
 
   return (
     <div className="text-center">
@@ -186,26 +213,30 @@ function HostView({ roomId, base, players, teams }) {
           : <div className="mt-3 text-2xl" style={{ color: 'var(--ink-soft)' }}>❓</div>)}
       </div>
 
-      {/* 제출 (도착 순서대로) */}
+      {/* 1등 배너 — 자동 지급됨 */}
+      {winner && (
+        <div className="mt-4 clay p-3 animate-pop max-w-lg mx-auto" style={{ background: 'var(--c-mint)', color: '#fff' }}>
+          <div className="font-display text-2xl">🏆 {winner.p.nickname} 1등!</div>
+          <div className="text-sm mt-0.5 opacity-90">
+            {teamById[winner.p.teamId]?.name ? `${teamById[winner.p.teamId].name} +1점 자동 지급` : '팀이 없어 점수는 못 줬어요'}
+          </div>
+        </div>
+      )}
+
+      {/* 제출 (도착 순서대로) — 판정은 자동 */}
       <div className="mt-4 max-w-lg mx-auto text-left space-y-1.5">
-        <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>📥 도착한 답 ({submissions.length})</div>
+        <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>📥 도착한 답 ({submissions.length}) · 자동 채점</div>
         {submissions.map((s, i) => {
           const team = teamById[s.p.teamId]
-          const match = revealed && isMatch(s.text)
+          const ok = match(s.text)
+          const first = winner?.id === s.id
           return (
-            <div key={s.id} className="clay-inset px-3 py-2 flex items-center gap-2" style={match ? { outline: '2px solid var(--c-mint)' } : {}}>
+            <div key={s.id} className="clay-inset px-3 py-2 flex items-center gap-2" style={first ? { outline: '2px solid var(--c-mint)' } : {}}>
               <span className="font-display text-sm w-5 shrink-0" style={{ color: 'var(--ink-soft)' }}>{i + 1}</span>
               <span className="font-bold shrink-0">{s.p.nickname}</span>
               {team && <span className="text-xs px-1.5 py-0.5 rounded shrink-0" style={{ background: team.color, color: '#fff' }}>{team.name}</span>}
-              <span className="flex-1 min-w-0 truncate">{s.text}{match && ' 💯'}</span>
-              <button
-                onClick={() => award(s)}
-                disabled={!s.p.teamId || !!awarded[s.id]}
-                className="clay-btn px-2.5 py-1 text-sm shrink-0 disabled:opacity-40"
-                style={{ background: awarded[s.id] ? 'var(--surface-2)' : 'var(--c-mint)', color: awarded[s.id] ? 'var(--ink-soft)' : '#fff' }}
-              >
-                {awarded[s.id] ? '지급됨' : '정답 +1'}
-              </button>
+              <span className="flex-1 min-w-0 truncate">{s.text}</span>
+              <span className="text-lg shrink-0">{first ? '🏆' : ok ? '✅' : '❌'}</span>
             </div>
           )
         })}
@@ -227,11 +258,12 @@ function HostView({ roomId, base, players, teams }) {
 }
 
 /* ───────── 플레이어 ───────── */
-function PlayerView({ base, me }) {
+function PlayerView({ base, players, me }) {
   const subset = useValue(`${base}/subset`)
   const order = useValue(`${base}/order`)
   const idx = useValue(`${base}/idx`) || 0
   const mine = useValue(`${base}/ans/${me.id}`)
+  const awarded = useValue(`${base}/awarded`)
   const [text, setText] = useState('')
 
   // 카드가 바뀌면 입력창 비우기
@@ -249,7 +281,16 @@ function PlayerView({ base, me }) {
 
   const deck = subsetByKey(subset)
   const cur = deck?.cards?.[order?.[idx]]
-  const submit = () => text.trim() && dbSet(`${base}/ans/${me.id}`, { text: text.trim(), ts: Date.now() })
+  const match = matcher(cur)
+  const myOk = !!mine && match(mine.text)
+  const iWon = !!awarded && awarded === me.id
+  const winnerName = awarded ? players.find((p) => p.id === awarded)?.nickname || '누군가' : null
+  // 이미 맞혔으면 잠금. 틀렸으면 다시 낼 수 있다.
+  const submit = () => {
+    const t = text.trim()
+    if (!t || myOk) return
+    dbSet(`${base}/ans/${me.id}`, { text: t, ts: SERVER_TS })
+  }
 
   return (
     <div className="text-center">
@@ -258,12 +299,26 @@ function PlayerView({ base, me }) {
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
-        className="mt-3 w-full clay-inset px-4 py-4 text-xl text-center"
-        placeholder="이어서 입력!"
+        disabled={myOk}
+        className="mt-3 w-full clay-inset px-4 py-4 text-xl text-center disabled:opacity-50"
+        placeholder={myOk ? '맞혔어요!' : '이어서 입력!'}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
       />
-      <Button className="mt-3 w-full" onClick={submit} disabled={!text.trim()}>제출 {mine && '(수정)'}</Button>
-      {mine && <p className="mt-2 text-sm" style={{ color: 'var(--c-mint)' }}>제출됨: {mine.text}</p>}
+      <Button className="mt-3 w-full" onClick={submit} disabled={!text.trim() || myOk}>
+        {myOk ? '✅ 정답' : mine ? '다시 제출' : '제출'}
+      </Button>
+
+      {iWon ? (
+        <p className="mt-3 font-display text-2xl animate-pop" style={{ color: 'var(--c-mint)' }}>🏆 1등 정답! 우리 팀 +1</p>
+      ) : myOk ? (
+        <p className="mt-3 font-display" style={{ color: 'var(--c-mint)' }}>✅ 정답! {winnerName ? `아쉽게도 ${winnerName} 님이 먼저 😢` : ''}</p>
+      ) : mine ? (
+        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>❌ 땡! 「{mine.text}」 · 다시 도전 🔥</p>
+      ) : awarded ? (
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>{winnerName} 님이 먼저 맞혔어요</p>
+      ) : (
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>먼저 맞히는 사람이 팀에 +1 🏆</p>
+      )}
     </div>
   )
 }

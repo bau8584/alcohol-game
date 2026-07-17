@@ -105,6 +105,15 @@ export default function Home() {
             호스트 입장
           </Button>
         </div>
+
+        {/* 화면 전용 — 아이패드·노트북·TV가 '화면 역할'만 하며 들어옴 (참가자로 안 잡힘) */}
+        <div className="clay p-5 bg-[var(--surface)] space-y-3 text-center">
+          <div className="text-lg font-bold">📺 화면으로 입장</div>
+          <Button variant="ghost" className="w-full" onClick={() => nav(`/tv/${SB_ROOM_ID}`)} disabled={busy}>
+            화면 전용 입장
+          </Button>
+          <p className="text-sm text-[var(--ink-soft)]">아이패드·노트북·TV를 다 같이 보는 화면으로. 조작 없음.</p>
+        </div>
       </div>
 
       {/* 개발용 테스트 버튼 (명단 29명 자동 배정 후 입장) */}
