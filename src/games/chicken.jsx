@@ -2,7 +2,7 @@
 // 멈추면 그 시간이 내 점수. 안 멈추고 버티다 폭발하면 0점 + 벌칙.
 // 오래 버틸수록 이득이지만 폭탄은 3초~최대초 사이 랜덤. 하나둘 빠지는 게 화면에 실시간으로 보인다.
 import { useEffect, useMemo, useState } from 'react'
-import { useValue, dbSet, dbUpdate, toList } from '../lib/db'
+import { useValue, dbSet, dbUpdate, toList, serverNow } from '../lib/db'
 import { Button } from '../components/ui'
 
 const MIN_MS = 3000
@@ -12,14 +12,14 @@ const MEDALS = ['🥇', '🥈', '🥉']
 
 const fmt = (ms) => (Math.max(0, ms) / 1000).toFixed(2)
 
-// 진행 중일 때만 도는 로컬 시계
+// 진행 중일 때만 도는 시계 (서버 기준 — 기기 시계 차이 무시)
 function useTicker(on) {
-  const [now, setNow] = useState(Date.now())
+  const [now, setNow] = useState(serverNow())
   useEffect(() => {
     if (!on) return
     let raf = 0
     const loop = () => {
-      setNow(Date.now())
+      setNow(serverNow())
       raf = requestAnimationFrame(loop)
     }
     raf = requestAnimationFrame(loop)
@@ -54,18 +54,23 @@ function HostView({ base, players, teams }) {
   const running = !!startedAt && !boomedAt
   const now = useTicker(running)
 
-  // 폭발 시점이 지나면 호스트가 한 번 확정 기록 → 모든 화면이 같은 값을 본다
+  // 폭발 선언은 rAF 틱이 아니라 타이머로 예약한다 → 호스트 탭이 백그라운드여도 제때 터진다.
+  // boomedAt = boomAt(예정 시각)로 확정해 모든 화면이 같은 값을 본다.
   useEffect(() => {
-    if (running && boomAt && now >= boomAt) dbSet(`${base}/boomedAt`, boomAt)
-  }, [running, boomAt, now, base])
+    if (!running || !boomAt) return
+    const id = setTimeout(() => dbSet(`${base}/boomedAt`, boomAt), Math.max(0, boomAt - serverNow()))
+    return () => clearTimeout(id)
+  }, [running, boomAt, base])
 
-  const start = () =>
+  const start = () => {
+    const t = serverNow()
     dbUpdate(base, {
-      startedAt: Date.now(),
-      boomAt: Date.now() + MIN_MS + Math.floor(Math.random() * (maxSec * 1000 - MIN_MS)),
+      startedAt: t,
+      boomAt: t + MIN_MS + Math.floor(Math.random() * (maxSec * 1000 - MIN_MS)),
       boomedAt: null,
       bank: null,
     })
+  }
   const reset = () => dbUpdate(base, { startedAt: null, boomAt: null, boomedAt: null, bank: null })
 
   const idle = !startedAt
@@ -141,12 +146,15 @@ function PlayerView({ base, players, me }) {
   const live = !!startedAt && !boomedAt
   const now = useTicker(live && mine == null)
   const active = live && mine == null
-  const caught = !!boomedAt && mine == null
+  // 탈출 성공 = 폭발 '전에' 멈춘 기록만. 폭발 뒤(네트워크 지연으로 늦게) 누른 기록(mine >= boomMs)은 무효 → 걸림.
+  const escaped = mine != null && (boomMs == null || mine < boomMs)
+  const caught = !!boomedAt && !escaped // 안 눌렀거나, 터진 뒤에 누른 사람
+  const lateBank = caught && mine != null // 눌렀지만 너무 늦어서 무효
   const elapsed = mine != null ? mine : startedAt ? (boomedAt ? boomedAt - startedAt : now - startedAt) : 0
 
   const bank = () => {
     if (!active) return
-    dbSet(`${base}/bank/${me.id}`, Date.now() - startedAt)
+    dbSet(`${base}/bank/${me.id}`, serverNow() - startedAt)
     if (navigator.vibrate) navigator.vibrate(40)
   }
 
@@ -170,7 +178,9 @@ function PlayerView({ base, players, me }) {
         <div className="font-display text-3xl mt-3">{label}</div>
       </button>
       {caught ? (
-        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>끝까지 버티다 터졌어요 · 벌칙 🍺</p>
+        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>
+          {lateBank ? `터진 뒤에 눌렀어요 (${fmt(mine)}초) · 벌칙 🍺` : '끝까지 버티다 터졌어요 · 벌칙 🍺'}
+        </p>
       ) : mine != null ? (
         <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>
           {fmt(mine)}초에 탈출 · 현재 {myRank}위 {boomedAt ? '' : '· 남은 사람들이 더 버티면 밀립니다'}

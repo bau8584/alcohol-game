@@ -21,6 +21,13 @@ import { db } from '../firebase'
 
 export const SERVER_TS = serverTimestamp()
 
+// 서버 시각 보정 — 기기 시계가 서로 어긋나도 같은 시간축을 쓰도록 Firebase가 추정한
+// (서버 - 내 시계) 오프셋을 추적한다. serverNow()는 모든 기기에서 (거의) 같은 값을 준다.
+// 치킨게임처럼 밀리초 단위 타이밍 판정을 하는 게임은 Date.now() 대신 이걸 써야 한다.
+let _serverOffset = 0
+onValue(ref(db, '.info/serverTimeOffset'), (snap) => { _serverOffset = snap.val() || 0 })
+export const serverNow = () => Date.now() + _serverOffset
+
 export const roomPath = (roomId, sub = '') => `rooms/${roomId}${sub ? '/' + sub : ''}`
 
 export const dbSet = (path, value) => set(ref(db, path), value)

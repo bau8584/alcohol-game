@@ -7,6 +7,7 @@ import {
 } from '../lib/actions'
 import { ensurePlayerId, saveSession } from '../lib/session'
 import { Button } from '../components/ui'
+import JoinQR from '../components/JoinQR'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 
 const clayInput =
@@ -66,7 +67,7 @@ export default function Home() {
       const pid = ensurePlayerId()
       saveSession({ nickname: '테스터', roomId: SB_TEST_ROOM_ID })
       await joinRoom(SB_TEST_ROOM_ID, pid, '테스터')
-      await setPlayerTeam(SB_TEST_ROOM_ID, pid, 'ski')
+      await setPlayerTeam(SB_TEST_ROOM_ID, pid, 'strawberry')
       await markPlayerSeed(SB_TEST_ROOM_ID, pid)
       nav(`/play/${SB_TEST_ROOM_ID}`)
     } catch (e) { setErr('테스트 실패: ' + e.message); setBusy(false) }
@@ -87,16 +88,26 @@ export default function Home() {
             <div className="text-sm text-[var(--ink-soft)]">방 코드 · 참가자에게 공유</div>
             <div className="font-display text-5xl tracking-widest mt-1 text-[var(--c-grape)]">{created.roomId}</div>
           </div>
+          <div className="flex flex-col items-center gap-1">
+            <JoinQR url={`${location.origin}/play/${created.roomId}`} size={180} />
+            <div className="text-xs text-[var(--ink-soft)]">📷 카메라로 스캔하면 바로 참가!</div>
+          </div>
           <div className="clay-inset py-3">
-            <div className="text-sm text-[var(--ink-soft)]">🔑 호스트 PIN</div>
+            <div className="text-sm text-[var(--ink-soft)]">🔑 호스트 PIN <span className="text-xs">(선택)</span></div>
             <div className="font-display text-3xl tracking-widest">{created.hostPin}</div>
             <div className="text-xs mt-1 text-[var(--ink-soft)] px-3">
-              다른 기기·브라우저에서 호스트로 들어올 때 필요해요. 메모해두세요.
+              지금 이 기기는 그냥 입장하면 돼요. PIN은 <b>다른 기기</b>에서 진행자로 들어올 때만 필요해요.
             </div>
           </div>
-          <Button className="w-full text-xl py-4" onClick={() => nav(`/host/${created.roomId}`)} disabled={busy}>
-            🖥️ 호스트 화면으로 입장
-          </Button>
+          <div className="space-y-2">
+            <Button className="w-full text-xl py-4" onClick={() => nav(`/host/${created.roomId}`)} disabled={busy}>
+              🖥️ 호스트 화면으로 입장
+            </Button>
+            <Button variant="ghost" className="w-full py-3" onClick={() => nav(`/play/${created.roomId}`)} disabled={busy}>
+              📱 참가자로 입장
+            </Button>
+          </div>
+          <p className="text-xs text-[var(--ink-soft)]">호스트 권한은 이 기기에 저장돼요. 참가자로 들어가도 나중에 호스트로 다시 올 수 있어요.</p>
         </div>
 
         <button onClick={() => setCreated(null)} className="text-sm text-[var(--ink-soft)] underline">← 처음으로</button>
@@ -149,16 +160,18 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 개발용 테스트 (명단 시드 후 입장) */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-[var(--ink-soft)]">🧪 테스트</span>
-        <button onClick={testHost} disabled={busy} className="clay-btn font-display px-3 py-1.5 text-sm" style={{ background: 'var(--c-sky)', color: '#fff' }}>
-          호스트
-        </button>
-        <button onClick={testPlayer} disabled={busy} className="clay-btn font-display px-3 py-1.5 text-sm" style={{ background: 'var(--c-pink)', color: '#fff' }}>
-          참가자
-        </button>
-      </div>
+      {/* 개발용 테스트 (명단 시드 후 입장) — 개발 모드에서만 노출 */}
+      {import.meta.env.DEV && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--ink-soft)]">🧪 테스트</span>
+          <button onClick={testHost} disabled={busy} className="clay-btn font-display px-3 py-1.5 text-sm" style={{ background: 'var(--c-sky)', color: '#fff' }}>
+            호스트
+          </button>
+          <button onClick={testPlayer} disabled={busy} className="clay-btn font-display px-3 py-1.5 text-sm" style={{ background: 'var(--c-pink)', color: '#fff' }}>
+            참가자
+          </button>
+        </div>
+      )}
 
       {err && <p className="text-[var(--c-coral)] font-bold text-center">{err}</p>}
     </div>

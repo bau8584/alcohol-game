@@ -13,11 +13,12 @@ export default function AdultToggle({ roomId, enabled }) {
     <>
       <button
         onClick={() => (enabled ? setAdultEnabled(roomId, false) : turnOn())}
-        className="clay-btn font-display px-3 py-1.5 text-sm shrink-0"
+        aria-pressed={enabled}
+        className={`font-display shrink-0 w-10 h-10 rounded-xl text-base leading-none ${enabled ? 'clay-inset' : 'clay-btn'}`}
         style={enabled ? { background: '#e64545', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink-soft)' }}
-        title="19금(성인) 콘텐츠 허용 여부 · 진행자만 · 기본 꺼짐"
+        title={`19금(성인) 콘텐츠 ${enabled ? 'ON — 눌러서 끄기' : 'OFF — 눌러서 켜기'} · 진행자만`}
       >
-        🔞 19금 {enabled ? 'ON' : 'OFF'}
+        19
       </button>
       {ask && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={() => setAsk(false)}>

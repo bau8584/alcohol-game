@@ -6,6 +6,8 @@ import { useParams } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
 import { playBase } from '../lib/actions'
+import HowToPlay from '../components/HowToPlay'
+import JoinQR from '../components/JoinQR'
 import { PhaseTag } from '../components/ui'
 
 const noop = () => {}
@@ -29,9 +31,13 @@ export default function Tv() {
           <span style={{ color: 'var(--ink-soft)' }}>방 코드 </span>
           <span className="font-display text-4xl md:text-5xl tracking-widest">{roomId}</span>
         </div>
-        <div className="text-right">
-          <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>📱 참가하기</div>
-          <div className="font-display text-lg md:text-2xl">{joinUrl}</div>
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>📱 참가하기</div>
+            <div className="font-display text-lg md:text-2xl">{joinUrl}</div>
+            <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>QR 스캔 또는 코드 {roomId} 입력</div>
+          </div>
+          <JoinQR url={joinUrl} size={104} />
         </div>
       </div>
 
@@ -43,6 +49,9 @@ export default function Tv() {
             <span className="font-display text-3xl md:text-4xl">{game.emoji} {game.name}</span>
             <PhaseTag status={meta.roundStatus} />
           </div>
+          <div className="max-w-lg mx-auto mb-4">
+            <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} />
+          </div>
           {/* 읽기 전용: 내부 조작 버튼이 눌리지 않도록 차단 */}
           <div className="pointer-events-none select-none">
             <game.HostView roomId={roomId} base={base} meta={meta} players={players} teams={teams} writePrompt={noop} />
@@ -52,6 +61,10 @@ export default function Tv() {
         <div className="clay p-8 text-center" style={{ background: 'var(--surface)' }}>
           <div className="text-7xl animate-pulse">⏳</div>
           <p className="mt-4 font-display text-3xl">진행자가 게임을 고르는 중…</p>
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <JoinQR url={joinUrl} size={200} />
+            <div className="font-display text-xl">📷 QR 스캔 또는 코드 <span className="tracking-widest">{roomId}</span> 로 참가!</div>
+          </div>
           <div className="mt-6">
             <div className="text-sm mb-2" style={{ color: 'var(--ink-soft)' }}>접속자 {players.length}명</div>
             <div className="flex flex-wrap justify-center gap-2">

@@ -214,6 +214,47 @@ export function createScatterGame(config) {
     )
   }
 
+  // 인정된(유니크) 답 검수 — 주제와 무관한 답을 진행자가 탭해서 무효(0점) 처리.
+  // 자동 채점만으로는 '주제와 상관없는 아무 단어'를 걸러낼 수 없어서, 결과에서 사람이 판정한다.
+  function VoidPicker({ res, byId, voidedKeys, base, disabled }) {
+    const uniques = useMemo(() => {
+      const out = []
+      Object.entries(res).forEach(([pid, r]) =>
+        r.items.forEach((it) => { if (it.uniq) out.push({ ...it, pid }) })
+      )
+      return out.sort((a, b) => (byId[a.pid]?.nickname || '').localeCompare(byId[b.pid]?.nickname || ''))
+    }, [res, byId])
+    if (!uniques.length) return null
+    const toggle = (n) => dbSet(`${base}/voided/${keyOf(n)}`, voidedKeys.has(n) ? null : n)
+    const voidedCount = uniques.filter((u) => voidedKeys.has(u.n)).length
+    return (
+      <div className="mt-5 max-w-lg mx-auto">
+        <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>
+          ✅ 인정된 답 {disabled ? '' : '· 주제와 안 맞으면 탭해서 무효'} {voidedCount > 0 && <span style={{ color: 'var(--c-coral)' }}>(무효 {voidedCount}개)</span>}
+        </div>
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {uniques.map((u, i) => {
+            const off = voidedKeys.has(u.n)
+            return (
+              <button
+                key={i}
+                onClick={() => !disabled && toggle(u.n)}
+                disabled={disabled}
+                className="clay-inset px-2.5 py-1 text-sm"
+                style={off ? { background: 'var(--c-coral)', color: '#fff', textDecoration: 'line-through' } : {}}
+                title={byId[u.pid]?.nickname}
+              >
+                {off ? '🚫 ' : ''}{u.text}
+                <span className="ml-1 text-xs" style={{ color: off ? 'rgba(255,255,255,0.8)' : 'var(--ink-soft)' }}>{byId[u.pid]?.nickname}</span>
+              </button>
+            )
+          })}
+        </div>
+        {!disabled && <p className="mt-1.5 text-xs" style={{ color: 'var(--ink-soft)' }}>무효 처리하면 그 답은 0점 · 점수 반영 전에 정리하세요</p>}
+      </div>
+    )
+  }
+
   // 여러 명이 똑같이 쓴 답 = 0점. 누가 겹쳤는지 보여준다.
   function Overlaps({ res, byId }) {
     const groups = useMemo(() => {
@@ -251,6 +292,7 @@ export function createScatterGame(config) {
     const endsAt = useValue(`${base}/endsAt`)
     const mineRaw = useValue(`${base}/ans/${me.id}`)
     const ansRaw = useValue(`${base}/ans`)
+    const voided = useValue(`${base}/voided`)
     const [text, setText] = useState('')
 
     const { idle, live, done } = useRound(endsAt)
@@ -259,6 +301,9 @@ export function createScatterGame(config) {
     const mine = useMemo(() => Object.values(mineRaw || {}).map((v) => v?.t).filter(Boolean), [mineRaw])
     const res = useMemo(() => (done ? tally(ansRaw) : null), [done, ansRaw])
     const myRes = res?.[me.id]
+    const voidedKeys = useMemo(() => new Set(Object.values(voided || {})), [voided])
+    const myEff = myRes ? myRes.items.filter((it) => it.uniq && !voidedKeys.has(it.n)).length : 0
+    const myVoided = myRes ? myRes.items.filter((it) => it.uniq && voidedKeys.has(it.n)).length : 0
 
     if (!subset) {
       return (
@@ -304,20 +349,24 @@ export function createScatterGame(config) {
 
         {idle && <p className="mt-6 font-display text-xl" style={{ color: 'var(--ink-soft)' }}>⏳ 호스트가 시작하면 입력!</p>}
 
-        {/* 내가 쓴 답 — 끝나면 유니크/겹침 표시 */}
+        {/* 내가 쓴 답 — 끝나면 인정(✅)/겹침(💥)/무효(🚫) 표시 */}
         <div className="mt-4 flex flex-wrap justify-center gap-1.5">
-          {(myRes ? myRes.items : mine.map((t) => ({ text: t }))).map((it, i) => (
-            <span key={i} className="clay-inset px-2.5 py-1 text-sm"
-              style={myRes ? (it.uniq ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--c-coral)', color: '#fff' }) : undefined}>
-              {myRes ? (it.uniq ? '✅ ' : '💥 ') : ''}{it.text}
-            </span>
-          ))}
+          {(myRes ? myRes.items : mine.map((t) => ({ text: t }))).map((it, i) => {
+            const off = myRes && it.uniq && voidedKeys.has(it.n)
+            const good = myRes && it.uniq && !off
+            return (
+              <span key={i} className="clay-inset px-2.5 py-1 text-sm"
+                style={myRes ? (good ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--c-coral)', color: '#fff', textDecoration: off ? 'line-through' : undefined }) : undefined}>
+                {myRes ? (good ? '✅ ' : off ? '🚫 ' : '💥 ') : ''}{it.text}
+              </span>
+            )
+          })}
         </div>
 
         {done && (
           myRes ? (
             <p className="mt-3 font-display text-2xl animate-pop" style={{ color: 'var(--c-mint)' }}>
-              {myRes.uniq}점 <span className="text-base" style={{ color: 'var(--ink-soft)' }}>(겹쳐서 날아간 답 {myRes.dup}개)</span>
+              {myEff}점 <span className="text-base" style={{ color: 'var(--ink-soft)' }}>(겹침 {myRes.dup}개{myVoided > 0 ? ` · 무효 ${myVoided}개` : ''})</span>
             </p>
           ) : (
             <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>🙈 하나도 못 썼어요…</p>

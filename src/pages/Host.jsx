@@ -7,6 +7,8 @@ import Scoreboard from '../components/Scoreboard'
 import TeamSettings from '../components/TeamSettings'
 import PlayerManager from '../components/PlayerManager'
 import HostConsole from '../components/HostConsole'
+import AdultToggle from '../components/AdultToggle'
+import JoinQR from '../components/JoinQR'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
 import { Button, Card } from '../components/ui'
@@ -38,6 +40,7 @@ function PinGate({ roomId, onOk }) {
 export default function Host() {
   const { roomId } = useParams()
   const [authed, setAuthed] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
   // 저장된 값이 있으면 '검증 중', 없으면 곧장 PIN 화면
   const [checking, setChecking] = useState(() => !!localStorage.getItem(HOST_KEY(roomId)))
   const { loading, exists, meta, players, teams } = useRoom(roomId)
@@ -81,6 +84,14 @@ export default function Host() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <AdultToggle roomId={roomId} enabled={!!meta.adultEnabled} />
+          <button
+            onClick={() => setQrOpen(true)}
+            className="clay-btn font-display px-3 py-2 text-base"
+            style={{ background: 'var(--c-mint)', color: '#fff' }}
+          >
+            📱 참가 QR
+          </button>
           {players.some((p) => p.seed) && (
             <button
               onClick={() => clearSeeds(roomId)}
@@ -102,6 +113,28 @@ export default function Host() {
         </div>
       </div>
 
+      {!game && (
+        <Card>
+          <div className="font-display text-lg mb-2">🚀 진행 순서</div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <button onClick={() => setQrOpen(true)} className="clay-inset p-3 text-left flex items-start gap-3">
+              <span className="w-7 h-7 rounded-full font-display flex items-center justify-center shrink-0" style={{ background: 'var(--c-mint)', color: '#fff' }}>1</span>
+              <div>
+                <div className="font-bold">📱 사람들 모으기</div>
+                <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>여기 눌러 참가 QR 띄우기 · 현재 <b>{players.length}명</b> 접속</div>
+              </div>
+            </button>
+            <div className="clay-inset p-3 text-left flex items-start gap-3">
+              <span className="w-7 h-7 rounded-full font-display flex items-center justify-center shrink-0" style={{ background: 'var(--c-grape)', color: '#fff' }}>2</span>
+              <div>
+                <div className="font-bold">🎮 게임 고르기</div>
+                <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>아래에서 선택 · 처음이면 <b style={{ color: 'var(--c-mint)' }}>🔰 입문 추천</b>부터</div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Scoreboard roomId={roomId} teams={teams} />
 
       {!game && <TeamSettings roomId={roomId} teams={teams} />}
@@ -109,6 +142,18 @@ export default function Host() {
       <PlayerManager roomId={roomId} players={players} teams={teams} />
 
       <HostConsole roomId={roomId} meta={meta} players={players} teams={teams} />
+
+      {qrOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setQrOpen(false)}>
+          <div className="clay p-6 text-center" style={{ background: 'var(--surface)' }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-2xl mb-1">📱 스캔해서 참가!</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>카메라로 QR을 비추거나, 코드 <b className="tracking-widest">{roomId}</b> 입력</p>
+            <div className="flex justify-center"><JoinQR url={joinUrl} size={280} /></div>
+            <div className="mt-3 font-display text-lg break-all">{joinUrl}</div>
+            <Button variant="ghost" className="mt-4" onClick={() => setQrOpen(false)}>닫기</Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

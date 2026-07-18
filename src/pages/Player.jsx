@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
@@ -6,7 +6,9 @@ import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost, r
 import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
 import ItemBar from '../components/ItemBar'
+import HowToPlay from '../components/HowToPlay'
 import HostConsole from '../components/HostConsole'
+import AdultToggle from '../components/AdultToggle'
 import Scoreboard from '../components/Scoreboard'
 import TeamSettings from '../components/TeamSettings'
 import PlayerManager from '../components/PlayerManager'
@@ -42,6 +44,18 @@ export default function Player() {
   useEffect(() => {
     if (me) markPresence(roomPath(roomId, `presence/${playerId}`), true, false)
   }, [!!me, roomId, playerId])
+
+  // 진행자+참가자 모드: 라운드가 실제 시작(roundStatus→'open')되면 '내 플레이'로 자동 전환 → 즉각 참여.
+  // 'open'을 쓰는 게임(무장→전원 액션형)에만 걸린다. 자체 진행형(연타·왕게임 등)은 진행자가
+  // 카드·타이머를 계속 조작해야 하므로 진행 탭에 그대로 둔다.
+  const prevStatusRef = useRef(meta?.roundStatus)
+  useEffect(() => {
+    const iAmHostNow = !!meta?.hostPlayerId && meta.hostPlayerId === playerId
+    if (iAmHostNow && meta?.roundStatus === 'open' && prevStatusRef.current !== 'open') {
+      setTab('play')
+    }
+    prevStatusRef.current = meta?.roundStatus
+  }, [meta?.roundStatus, meta?.hostPlayerId, playerId])
 
   if (loading) return <Center>불러오는 중…</Center>
   if (!exists) return <Center>방 코드 {roomId}를 찾을 수 없어요.</Center>
@@ -87,7 +101,7 @@ export default function Player() {
         <BackButton className="absolute top-4 left-4" />
         <Card className="w-full max-w-sm text-center">
           <h2 className="font-display text-xl mb-1">{me.nickname} 님, 팀 선택!</h2>
-          <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>진행자가 나중에 조정할 수 있어요.</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>고민되면 아래 <b>아무 팀이나</b>를 누르세요. 진행자가 나중에 조정할 수 있어요.</p>
           <div className="grid gap-3">
             {teams.map((t) => (
               <button key={t.id} onClick={() => setPlayerTeam(roomId, playerId, t.id)} className="clay-btn py-4 font-display text-xl" style={{ background: t.color, color: '#fff' }}>
@@ -95,6 +109,16 @@ export default function Player() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => {
+              const smallest = [...teams].sort((a, b) => a.members.length - b.members.length)[0]
+              if (smallest) setPlayerTeam(roomId, playerId, smallest.id)
+            }}
+            className="clay-btn w-full mt-3 py-3 font-display"
+            style={{ background: 'var(--c-grape)', color: '#fff' }}
+          >
+            🎲 아무 팀이나 (자동 배정)
+          </button>
           <button onClick={leaveAndReset} className="mt-4 text-xs underline" style={{ color: 'var(--ink-soft)' }}>내가 아니에요 · 나가서 기록 지우기</button>
         </Card>
       </Center>
@@ -142,7 +166,7 @@ export default function Player() {
 
       {onHostTab ? (
         <>
-          <HostToolbar roomId={roomId} players={players} />
+          <HostToolbar roomId={roomId} players={players} adultEnabled={!!meta.adultEnabled} />
           <Scoreboard roomId={roomId} teams={teams} />
           {!game && <TeamSettings roomId={roomId} teams={teams} />}
           <PlayerManager roomId={roomId} players={players} teams={teams} />
@@ -159,6 +183,7 @@ export default function Player() {
         <>
           <TeamScores teams={teams} myTeamId={myTeam?.id} />
           <ItemBar me={me} team={myTeam} />
+          {game && base && <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} />}
           <div className="pt-2">
             {game && base ? (
               <game.PlayerView roomId={roomId} base={base} meta={meta} players={players} teams={teams} me={me} myTeam={myTeam} />
@@ -246,7 +271,7 @@ function TeamScores({ teams, myTeamId }) {
 
 // 폰 진행 탭 상단 툴바 — 방 정보(참가·TV 링크) + 초기화 + 테스트 명단 지우기.
 // (19금 토글은 HostConsole 쪽에서 별도 처리)
-function HostToolbar({ roomId, players }) {
+function HostToolbar({ roomId, players, adultEnabled }) {
   const joinUrl = `${location.origin}/play/${roomId}`
   const tvUrl = `${location.origin}/tv/${roomId}`
   const doReset = () => { if (confirm('참가자·점수·재화·진행상태를 모두 지우고 처음 상태로 초기화할까요?')) resetRoom(roomId) }
@@ -259,6 +284,7 @@ function HostToolbar({ roomId, players }) {
           <div className="text-xs truncate" style={{ color: 'var(--ink-soft)' }}>참가 {joinUrl} · 📺 {tvUrl}</div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <AdultToggle roomId={roomId} enabled={adultEnabled} />
           {players.some((p) => p.seed) && (
             <button onClick={() => clearSeeds(roomId)} className="clay-btn font-display px-3 py-2 text-sm" style={{ background: 'var(--c-grape)', color: '#fff' }} title="테스트로 시드된 가짜 참가자만 제거 (실제 참가자는 유지)">🧪 테스트 명단</button>
           )}

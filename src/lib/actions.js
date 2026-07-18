@@ -7,7 +7,7 @@ import {
   dbTransaction,
   dbRemove,
 } from './db'
-import { DEFAULT_TEAMS, TEAM_COLORS } from '../config/teams'
+import { DEFAULT_TEAMS, TEAM_COLORS, TEAM_PALETTE } from '../config/teams'
 import { initialItems } from '../config/items'
 import { ROSTER } from '../config/roster'
 
@@ -255,11 +255,14 @@ export async function addTeam(roomId) {
   const teams = (await dbGet(roomPath(roomId, 'teams'))) || {}
   const list = Object.values(teams)
   const used = new Set(list.map((t) => t.color))
-  const color = TEAM_COLORS.find((c) => !used.has(c)) || TEAM_COLORS[list.length % TEAM_COLORS.length]
+  // 안 쓴 과일을 팔레트 순서대로 골라 이름·색을 함께 배정. 다 쓰면 'N팀'으로 폴백.
+  const fruit = TEAM_PALETTE.find((f) => !used.has(f.color))
   const order = list.length ? Math.max(...list.map((t) => t.order ?? 0)) + 1 : 0
   const id = 't' + Math.random().toString(36).slice(2, 7)
+  const name = fruit ? fruit.name : `${order + 1}팀`
+  const color = fruit ? fruit.color : TEAM_COLORS[list.length % TEAM_COLORS.length]
   await dbUpdate(roomPath(roomId), {
-    [`teams/${id}`]: { name: `${order + 1}팀`, color, order, score: 0, items: initialItems('team') },
+    [`teams/${id}`]: { name, color, order, score: 0, items: initialItems('team') },
   })
   return id
 }

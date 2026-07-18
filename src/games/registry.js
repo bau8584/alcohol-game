@@ -22,10 +22,16 @@ import wavelength from './wavelength.jsx'
 import mission from './mission.jsx'
 import oxtruth from './oxtruth.jsx'
 import mbti from './mbti.jsx'
+import heartsignal from './heartsignal.jsx'
 
-export const GAMES = [buzzer, tap, timing, chicken, pick, herd, eunchi, spy, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, oxtruth, mbti]
+export const GAMES = [buzzer, tap, timing, chicken, pick, herd, eunchi, spy, sync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, whodunit, wavelength, mission, oxtruth, mbti, heartsignal]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
+
+// 🔰 입문 추천 — 규칙이 자명하고 즉각적이라 처음 모임에서 바로 굴러가는 게임.
+// 게임 선택 화면에서 배지·필터·상단 정렬에 쓴다.
+export const BEGINNER_IDS = ['tap', 'chicken', 'timing', 'sync', 'eunchi', 'pick']
+export const isBeginner = (id) => BEGINNER_IDS.includes(id)
 
 // 태그 분류: 장르(성격) + 속성(형식)
 export const GENRES = [
