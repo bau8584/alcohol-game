@@ -2,6 +2,7 @@
 // 게임이 시작/일시정지/계속/새 레이스를 자체 컨트롤(controls.mode='self' → 프레임워크 바 숨김).
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useValue, useChildList, dbUpdate, dbTransaction } from '../lib/db'
+import { setRoundStatus } from '../lib/actions'
 import Countdown from '../components/Countdown'
 import ModeTabs from '../components/ModeTabs'
 import { Button } from '../components/ui'
@@ -15,7 +16,7 @@ const MODES = [
 ]
 const MEDALS = ['🥇', '🥈', '🥉']
 
-function HostView({ base, players, teams }) {
+function HostView({ roomId, base, players, teams }) {
   const running = useValue(`${base}/running`)
   const paused = useValue(`${base}/paused`)
   const endsAt = useValue(`${base}/endsAt`)
@@ -65,11 +66,16 @@ function HostView({ base, players, teams }) {
   // 액션들
   const setMode = (m) => dbUpdate(base, { mode: m })
   const changeSec = (d) => dbUpdate(base, { raceSec: Math.min(MAX_SEC, Math.max(MIN_SEC, raceSec + d)) })
-  const startRace = () =>
+  const startRace = () => {
     dbUpdate(base, { running: true, paused: false, remainMs: null, startedAt: Date.now(), endsAt: Date.now() + raceSec * 1000, tap: null })
+    setRoundStatus(roomId, 'open') // '내 플레이' 자동 전환 신호 (mode:'self'라 프레임워크 바는 안 뜸)
+  }
   const pauseRace = () => dbUpdate(base, { paused: true, remainMs: Math.max(0, endsAt - Date.now()) })
   const resumeRace = () => dbUpdate(base, { paused: false, endsAt: Date.now() + (remainMs || 0), remainMs: null })
-  const newRace = () => dbUpdate(base, { running: false, paused: false, endsAt: null, remainMs: null, tap: null })
+  const newRace = () => {
+    dbUpdate(base, { running: false, paused: false, endsAt: null, remainMs: null, tap: null })
+    setRoundStatus(roomId, 'staged') // 다음 시작이 staged→open 전환이 되도록 리셋
+  }
 
   // 좌측 주 버튼: 대기→시작 / 진행중→일시정지 / 일시정지→계속 / 종료→다시 시작
   let leftBtn

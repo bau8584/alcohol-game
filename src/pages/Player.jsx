@@ -2,16 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
-import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost, resetRoom, clearSeeds } from '../lib/actions'
+import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost } from '../lib/actions'
 import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
-import ItemBar from '../components/ItemBar'
+import HeartBar from '../components/HeartBar'
 import HowToPlay from '../components/HowToPlay'
 import HostConsole from '../components/HostConsole'
-import AdultToggle from '../components/AdultToggle'
-import Scoreboard from '../components/Scoreboard'
-import TeamSettings from '../components/TeamSettings'
-import PlayerManager from '../components/PlayerManager'
+import RoomPanel from '../components/RoomPanel'
+import SettingsMenu from '../components/SettingsMenu'
+import JoinQR from '../components/JoinQR'
 import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
 import { Button, Card, PhaseTag } from '../components/ui'
@@ -25,6 +24,7 @@ export default function Player() {
   const [joinErr, setJoinErr] = useState('')
   const [joining, setJoining] = useState(false)
   const [tab, setTab] = useState('play') // 진행자일 때만 사용: 'play' | 'host'
+  const [qrOpen, setQrOpen] = useState(false)
   const me = players.find((p) => p.id === playerId)
   const myTeam = teams.find((t) => t.id === me?.teamId)
 
@@ -45,17 +45,22 @@ export default function Player() {
     if (me) markPresence(roomPath(roomId, `presence/${playerId}`), true, false)
   }, [!!me, roomId, playerId])
 
-  // 진행자+참가자 모드: 라운드가 실제 시작(roundStatus→'open')되면 '내 플레이'로 자동 전환 → 즉각 참여.
-  // 'open'을 쓰는 게임(무장→전원 액션형)에만 걸린다. 자체 진행형(연타·왕게임 등)은 진행자가
-  // 카드·타이머를 계속 조작해야 하므로 진행 탭에 그대로 둔다.
+  // 진행자+참가자 모드 탭 자동 전환:
+  //  · 라운드가 실제 시작(roundStatus→'open')되면 → '내 플레이'로 (즉각 참여)
+  //    'open'을 쓰는 게임에만 걸린다. 연타·치킨·줄줄이는 자체 시작에서 'open'을 쏘도록 맞춰뒀고,
+  //    카드·판정을 계속 잡아야 하는 자체 진행형(몸으로·이어말하기·너이름이·왕게임 등)은 진행 탭 유지.
+  //  · 게임이 끝나 목록으로 나오면(activeGameId 사라짐) → '진행'으로 (다음 게임 고르기 루프)
   const prevStatusRef = useRef(meta?.roundStatus)
+  const prevGameRef = useRef(meta?.activeGameId)
   useEffect(() => {
     const iAmHostNow = !!meta?.hostPlayerId && meta.hostPlayerId === playerId
-    if (iAmHostNow && meta?.roundStatus === 'open' && prevStatusRef.current !== 'open') {
-      setTab('play')
+    if (iAmHostNow) {
+      if (meta?.roundStatus === 'open' && prevStatusRef.current !== 'open') setTab('play')
+      else if (!meta?.activeGameId && prevGameRef.current) setTab('host')
     }
     prevStatusRef.current = meta?.roundStatus
-  }, [meta?.roundStatus, meta?.hostPlayerId, playerId])
+    prevGameRef.current = meta?.activeGameId
+  }, [meta?.roundStatus, meta?.activeGameId, meta?.hostPlayerId, playerId])
 
   if (loading) return <Center>불러오는 중…</Center>
   if (!exists) return <Center>방 코드 {roomId}를 찾을 수 없어요.</Center>
@@ -135,13 +140,18 @@ export default function Player() {
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <BackButton label="" />
+          <HeartBar hearts={me.hearts || 0} />
           <div className="font-display text-lg truncate">{me.nickname} <span className="text-sm" style={{ color: myTeam?.color }}>{myTeam?.name}</span></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {game && <PhaseTag status={meta.roundStatus} />}
           {!iAmHost && <HostClaim roomId={roomId} playerId={playerId} />}
           <button onClick={leaveAndReset} className="clay px-2.5 py-2 text-sm font-bold" style={{ background: 'var(--surface)', color: 'var(--ink)' }} title="나가기 · 접속 기록 지우기">🚪</button>
-          <ThemeSwitcher />
+          {iAmHost ? (
+            <SettingsMenu roomId={roomId} meta={meta} players={players} onShowQR={() => setQrOpen(true)} />
+          ) : (
+            <ThemeSwitcher />
+          )}
         </div>
       </div>
 
@@ -166,11 +176,8 @@ export default function Player() {
 
       {onHostTab ? (
         <>
-          <HostToolbar roomId={roomId} players={players} adultEnabled={!!meta.adultEnabled} />
-          <Scoreboard roomId={roomId} teams={teams} />
-          {!game && <TeamSettings roomId={roomId} teams={teams} />}
-          <PlayerManager roomId={roomId} players={players} teams={teams} />
           <HostConsole roomId={roomId} meta={meta} players={players} teams={teams} compact />
+          <RoomPanel key={game ? 'ingame' : 'lobby'} roomId={roomId} teams={teams} players={players} game={game} defaultOpen={!game} />
           <button
             onClick={async () => { if (confirm('진행자 권한을 내려놓을까요?')) { await releaseHost(roomId, playerId); setTab('play') } }}
             className="w-full text-xs underline py-2"
@@ -182,8 +189,6 @@ export default function Player() {
       ) : (
         <>
           <TeamScores teams={teams} myTeamId={myTeam?.id} />
-          <ItemBar me={me} team={myTeam} />
-          {game && base && <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} />}
           <div className="pt-2">
             {game && base ? (
               <game.PlayerView roomId={roomId} base={base} meta={meta} players={players} teams={teams} me={me} myTeam={myTeam} />
@@ -195,7 +200,21 @@ export default function Player() {
               </div>
             )}
           </div>
+          {/* 규칙은 게임 화면 아래에, 기본은 접힌 상태 — 게임 진행을 가리지 않도록 */}
+          {game && base && <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} defaultOpen={false} />}
         </>
+      )}
+
+      {qrOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setQrOpen(false)}>
+          <div className="clay p-6 text-center" style={{ background: 'var(--surface)' }} onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-2xl mb-1">📱 스캔해서 참가!</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>카메라로 QR을 비추거나, 코드 <b className="tracking-widest">{roomId}</b> 입력</p>
+            <div className="flex justify-center"><JoinQR url={`${location.origin}/play/${roomId}`} size={280} /></div>
+            <div className="mt-3 font-display text-lg break-all">{location.origin}/play/{roomId}</div>
+            <Button variant="ghost" className="mt-4" onClick={() => setQrOpen(false)}>닫기</Button>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -266,32 +285,6 @@ function TeamScores({ teams, myTeamId }) {
         )
       })}
     </div>
-  )
-}
-
-// 폰 진행 탭 상단 툴바 — 방 정보(참가·TV 링크) + 초기화 + 테스트 명단 지우기.
-// (19금 토글은 HostConsole 쪽에서 별도 처리)
-function HostToolbar({ roomId, players, adultEnabled }) {
-  const joinUrl = `${location.origin}/play/${roomId}`
-  const tvUrl = `${location.origin}/tv/${roomId}`
-  const doReset = () => { if (confirm('참가자·점수·재화·진행상태를 모두 지우고 처음 상태로 초기화할까요?')) resetRoom(roomId) }
-  return (
-    <Card>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>방 코드 </span>
-          <span className="font-display text-2xl tracking-widest">{roomId}</span>
-          <div className="text-xs truncate" style={{ color: 'var(--ink-soft)' }}>참가 {joinUrl} · 📺 {tvUrl}</div>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <AdultToggle roomId={roomId} enabled={adultEnabled} />
-          {players.some((p) => p.seed) && (
-            <button onClick={() => clearSeeds(roomId)} className="clay-btn font-display px-3 py-2 text-sm" style={{ background: 'var(--c-grape)', color: '#fff' }} title="테스트로 시드된 가짜 참가자만 제거 (실제 참가자는 유지)">🧪 테스트 명단</button>
-          )}
-          <button onClick={doReset} className="clay-btn font-display px-3 py-2 text-sm" style={{ background: 'var(--c-coral)', color: '#fff' }}>🧹 초기화</button>
-        </div>
-      </div>
-    </Card>
   )
 }
 

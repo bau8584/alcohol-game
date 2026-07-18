@@ -11,7 +11,7 @@
 // subsets = [{ key, label, cards: [{ text }], adult? }]
 import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet, dbUpdate, dbPush, dbTransaction } from '../lib/db'
-import { addTeamScore } from '../lib/actions'
+import { addTeamScore, setRoundStatus } from '../lib/actions'
 import { norm, tally } from './scatterScore'
 import Countdown from '../components/Countdown'
 import ModeTabs from '../components/ModeTabs'
@@ -98,9 +98,15 @@ export function createScatterGame(config) {
     const atEnd = idx >= total - 1
     const typing = Object.keys(ansRaw || {}).length
 
-    const newTopic = (i) => dbUpdate(base, { idx: i, endsAt: null, ans: null, scored: null, voided: null })
+    const newTopic = (i) => {
+      dbUpdate(base, { idx: i, endsAt: null, ans: null, scored: null, voided: null })
+      setRoundStatus(roomId, 'staged') // 다음 시작이 staged→open 전환이 되도록 리셋
+    }
     const go = (d) => newTopic(Math.min(total - 1, Math.max(0, idx + d)))
-    const start = () => dbUpdate(base, { endsAt: Date.now() + sec * 1000, ans: null, scored: null, voided: null })
+    const start = () => {
+      dbUpdate(base, { endsAt: Date.now() + sec * 1000, ans: null, scored: null, voided: null })
+      setRoundStatus(roomId, 'open') // '내 플레이' 자동 전환 신호
+    }
     const applyScore = async () => {
       const r = await dbTransaction(`${base}/scored`, (cur) => (cur ? undefined : true))
       if (!r.committed) return

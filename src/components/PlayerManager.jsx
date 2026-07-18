@@ -1,7 +1,7 @@
 // 참가자 관리: 닉네임 변경 + 팀 재배정 + 강퇴 (접었다 펴기). 게임 중에도 항상 접근 가능.
 // /host 큰 화면과 '진행자도 참가자' 모드의 폰 진행 탭에서 공용으로 쓴다.
 import { useState } from 'react'
-import { setPlayerTeam, setPlayerNickname, kickPlayer } from '../lib/actions'
+import { setPlayerTeam, setPlayerNickname, kickPlayer, awardHearts } from '../lib/actions'
 import { Card } from './ui'
 
 export default function PlayerManager({ roomId, players, teams }) {
@@ -42,6 +42,11 @@ export default function PlayerManager({ roomId, players, teams }) {
                   <span className="font-bold flex-1 min-w-[70px] truncate">
                     {p.nickname}
                     {p.seed && <span className="ml-1 text-xs" style={{ color: 'var(--ink-soft)' }}>(테스트)</span>}
+                  </span>
+                  <span className="flex items-center gap-1 shrink-0" title="하트 지급/차감">
+                    <button onClick={() => awardHearts(roomId, p.id, -1)} disabled={!(p.hearts > 0)} className="clay-btn w-6 h-6 text-xs disabled:opacity-30" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>−</button>
+                    <span className="text-sm font-bold" style={{ color: 'var(--c-pink)' }}>💗{p.hearts || 0}</span>
+                    <button onClick={() => awardHearts(roomId, p.id, 1)} className="clay-btn w-6 h-6 text-xs" style={{ background: 'var(--c-pink)', color: '#fff' }}>+</button>
                   </span>
                   <button
                     onClick={() => startEdit(p)}

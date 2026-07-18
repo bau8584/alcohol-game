@@ -1,7 +1,7 @@
-// 싱크로 (마음 맞히기) — 마스터가 보기 중 '답 하나'를 비밀로 정하고, 나머지가 그 답을 맞힌다.
-// 마스터와 같은 걸 고르면 텔레파시 성공 💯, 못 맞히면 벌칙 🍺. 판정은 마스터의 답 하나로 끝 → 시비 없음.
+// 싱크로 (마음 맞히기) — 출제자가 보기 중 '답 하나'를 비밀로 정하고, 나머지가 그 답을 맞힌다.
+// 출제자와 같은 걸 고르면 텔레파시 성공 💯, 못 맞히면 벌칙 🍺. 판정은 출제자의 답 하나로 끝 → 시비 없음.
 // 기본은 2지선다(A vs B) — 주사위 한 번이면 입력 끝. 보기 4개는 필요할 때만 연다.
-// (구 '밸런스 배틀' 흡수: 2지선다 소신투표는 판정 규칙이 사후에 정해져 목표를 가질 수 없었음 → 마스터 맞히기로 대체)
+// (구 '밸런스 배틀' 흡수: 2지선다 소신투표는 판정 규칙이 사후에 정해져 목표를 가질 수 없었음 → 출제자 맞히기로 대체)
 import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet } from '../lib/db'
 
@@ -129,8 +129,8 @@ const titleOf = (quiz) => quiz?.q || (quiz?.opts || []).filter(Boolean).join(' v
 /* ───────── 호스트 ───────── */
 function HostView({ base, meta, players, teams }) {
   const quiz = useValue(`${base}/quiz`)
-  const answerer = useValue(`${base}/answerer`) // 마스터 playerId
-  const answer = useValue(`${base}/answer`) // 마스터의 비밀 답(index) — 공개 전엔 값 숨김
+  const answerer = useValue(`${base}/answerer`) // 출제자 playerId
+  const answer = useValue(`${base}/answer`) // 출제자의 비밀 답(index) — 공개 전엔 값 숨김
   const picks = useValue(`${base}/pick`)
   const staged = meta.roundStatus === 'staged'
   const reveal = meta.roundStatus === 'reveal'
@@ -152,14 +152,14 @@ function HostView({ base, meta, players, teams }) {
     const opts = size === 2 ? (draft.opts || []).slice(0, 2) : [...(draft.opts || []), '', '', '', ''].slice(0, 4)
     write({ ...draft, opts })
   }
-  // 편집(타이핑)은 답/추측을 지우지 않음 — 오타 수정하다 마스터 답이 날아가면 곤란
+  // 편집(타이핑)은 답/추측을 지우지 않음 — 오타 수정하다 출제자 답이 날아가면 곤란
   const setQ = (v) => { const x = { ...draft, q: v }; setDraft(x); dbSet(`${base}/quiz`, x) }
   const setOpt = (i, v) => { const opts = [...draft.opts]; opts[i] = v; const x = { ...draft, opts }; setDraft(x); dbSet(`${base}/quiz`, x) }
 
   const live = players.filter((p) => p.connected !== false)
   const randomMaster = () => { if (live.length) dbSet(`${base}/answerer`, pick1(live).id) }
 
-  // 추측 집계 (마스터 제외)
+  // 추측 집계 (출제자 제외)
   const guessers = players.filter((p) => p.id !== answerer)
   const pk = picks || {}
   const answered = typeof answer === 'number'
@@ -172,7 +172,7 @@ function HostView({ base, meta, players, teams }) {
   const correctNames = answered ? byOption[answer] || [] : []
   const wrongNames = guessers.filter((p) => typeof pk[p.id] === 'number' && pk[p.id] !== answer).map((p) => p.nickname)
 
-  // 팀별 적중률 (마스터 제외 · 추측한 사람 기준)
+  // 팀별 적중률 (출제자 제외 · 추측한 사람 기준)
   const teamStats = useMemo(() => {
     if (!answered) return []
     return (teams || []).map((t) => {
@@ -216,9 +216,9 @@ function HostView({ base, meta, players, teams }) {
             </div>
           </div>
 
-          {/* 마스터 — 기본은 랜덤, 필요하면 직접 지목 */}
+          {/* 출제자 — 기본은 랜덤, 필요하면 직접 지목 */}
           <div className="max-w-md mx-auto">
-            <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>🤫 답을 정할 <b>마스터</b></div>
+            <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>🤫 답을 정할 <b>출제자</b></div>
             <button onClick={randomMaster} disabled={!live.length} className="clay-btn px-5 py-2 font-display mb-2 disabled:opacity-40" style={{ background: 'var(--c-grape)', color: '#fff' }}>
               🎲 랜덤으로 뽑기
             </button>
@@ -233,14 +233,14 @@ function HostView({ base, meta, players, teams }) {
             </div>
           </div>
           <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>
-            {answerer ? '▶ 시작 → 마스터가 답을 정하고, 나머지가 맞혀요' : '마스터를 먼저 뽑아주세요'}
+            {answerer ? '▶ 시작 → 출제자가 답을 정하고, 나머지가 맞혀요' : '출제자를 먼저 뽑아주세요'}
           </p>
         </>
       ) : (
         <>
           <div className="font-display text-2xl">{titleOf(quiz)}</div>
           <div className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>
-            🤫 마스터 <b style={{ color: 'var(--ink)' }}>{answererName || '?'}</b>
+            🤫 출제자 <b style={{ color: 'var(--ink)' }}>{answererName || '?'}</b>
             {!reveal && <> · 답 {answered ? '정함 ✓' : '고르는 중…'} · 추측 {guessCount}/{guessers.length}</>}
           </div>
 
@@ -275,7 +275,7 @@ function HostView({ base, meta, players, teams }) {
 
                   {teamStats.length > 0 && (
                     <div className="mt-4 text-left">
-                      <div className="text-sm mb-1 text-center" style={{ color: 'var(--ink-soft)' }}>팀별 적중률 (마스터 제외)</div>
+                      <div className="text-sm mb-1 text-center" style={{ color: 'var(--ink-soft)' }}>팀별 적중률 (출제자 제외)</div>
                       <div className="space-y-1.5">
                         {teamStats.map((s, i) => {
                           const champ = i === 0 && s.hit > 0
@@ -295,11 +295,11 @@ function HostView({ base, meta, players, teams }) {
                   )}
                 </>
               ) : (
-                <p className="font-bold" style={{ color: 'var(--c-coral)' }}>마스터가 답을 안 정했어요. 🔄 새 라운드로 다시!</p>
+                <p className="font-bold" style={{ color: 'var(--c-coral)' }}>출제자가 답을 안 정했어요. 🔄 새 라운드로 다시!</p>
               )}
             </div>
           )}
-          {!reveal && <p className="mt-4 text-sm" style={{ color: 'var(--ink-soft)' }}>마스터가 답을 정하면 👁 공개!</p>}
+          {!reveal && <p className="mt-4 text-sm" style={{ color: 'var(--ink-soft)' }}>출제자가 답을 정하면 👁 공개!</p>}
         </>
       )}
     </div>
@@ -346,7 +346,7 @@ function PlayerView({ base, meta, players, me }) {
   const open = meta.roundStatus === 'open'
   const reveal = meta.roundStatus === 'reveal'
   const amMaster = answerer === me.id
-  const masterName = players.find((p) => p.id === answerer)?.nickname || '마스터'
+  const masterName = players.find((p) => p.id === answerer)?.nickname || '출제자'
   const ready = (quiz?.opts || []).filter(Boolean).length >= 2
   const label = (i) => (typeof i === 'number' ? `${LETTERS[i]}. ${quiz?.opts?.[i] || '—'}` : '미정')
 
@@ -389,7 +389,7 @@ function PlayerView({ base, meta, players, me }) {
     return (
       <div className="text-center py-10">
         <div className="text-5xl">🤫</div>
-        <p className="mt-3 font-display text-xl">{amMaster ? '당신이 마스터로 뽑혔어요!' : `마스터: ${masterName}`}</p>
+        <p className="mt-3 font-display text-xl">{amMaster ? '당신이 출제자로 뽑혔어요!' : `출제자: ${masterName}`}</p>
         <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>진행자가 시작하면 시작해요…</p>
       </div>
     )
@@ -399,7 +399,7 @@ function PlayerView({ base, meta, players, me }) {
     return (
       <div className="text-center">
         <p className="font-display text-xl">{titleOf(quiz)}</p>
-        <p className="text-sm mt-1" style={{ color: 'var(--c-grape)' }}>🤫 당신이 <b>마스터</b>! 답 하나를 정하세요 · 남들이 이걸 맞혀요</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--c-grape)' }}>🤫 당신이 <b>출제자</b>! 답 하나를 정하세요 · 남들이 이걸 맞혀요</p>
         <OptionButtons opts={quiz.opts} selected={typeof answer === 'number' ? answer : null} onPick={(i) => dbSet(`${base}/answer`, i)} />
         {typeof answer === 'number' && <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>답 정함 · 변경 가능 (비밀)</p>}
       </div>
@@ -420,7 +420,7 @@ export default {
   id: 'sync',
   name: '싱크로',
   emoji: '💞',
-  tagline: '마스터의 선택 맞히기 · A vs B',
+  tagline: '출제자의 선택 맞히기 · A vs B',
   genres: ['telepathy', 'mind'],
   traits: ['solo'],
   HostView,

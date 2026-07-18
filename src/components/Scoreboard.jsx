@@ -1,12 +1,10 @@
-// Host 상단: 팀별 점수 박스 — 순위 메달 + 점수 ± 조절 + 인원/재화 (클레이).
+// Host 상단: 팀별 점수 박스 — 순위 메달 + 점수 ± 조절 + 인원 (클레이).
 import { addTeamScore } from '../lib/actions'
-import { teamItems } from '../config/items'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 const STEPS = [-1, 1, 3, 5]
 
 export default function Scoreboard({ roomId, teams }) {
-  const tItems = teamItems()
   const max = Math.max(1, ...teams.map((t) => t.score))
   // 동점 공동순위: 나보다 점수 높은 팀 수 = 내 순위 인덱스
   const rankOf = (t) => teams.filter((x) => x.score > t.score).length
@@ -40,12 +38,6 @@ export default function Scoreboard({ roomId, teams }) {
                     {d > 0 ? `+${d}` : d}
                   </button>
                 ))}
-              </div>
-            )}
-
-            {tItems.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2 text-xs justify-center" style={{ color: 'var(--ink-soft)' }}>
-                {tItems.map((it) => (<span key={it.id}>{it.emoji}{t.items?.[it.id] || 0}</span>))}
               </div>
             )}
           </div>

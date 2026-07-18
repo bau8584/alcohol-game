@@ -1,6 +1,6 @@
-// 웨이브렝스 — 스펙트럼 위 '비밀 지점'을 마스터가 단어 힌트로 설명, 나머지가 바에서 맞힌다.
-// 마스터가 타깃을 직접 지정(자유) · 3단 존 판정(🎯완벽/👍근접/😅아슬/밖=벌칙) · 존 폭은 호스트가 조절.
-// 마스터 양쪽 벌칙: 적중 0명(설명 못함) 또는 전원 적중(너무 쉽게 냄) → 마스터가 마심. '적당히 어렵게'가 최적해.
+// 웨이브렝스 — 스펙트럼 위 '비밀 지점'을 출제자가 단어 힌트로 설명, 나머지가 바에서 맞힌다.
+// 출제자가 타깃을 직접 지정(자유) · 3단 존 판정(🎯완벽/👍근접/😅아슬/밖=벌칙) · 존 폭은 호스트가 조절.
+// 출제자 양쪽 벌칙: 적중 0명(설명 못함) 또는 전원 적중(너무 쉽게 냄) → 출제자가 마심. '적당히 어렵게'가 최적해.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useValue, dbSet, dbUpdate, toList } from '../lib/db'
 import { Button } from '../components/ui'
@@ -105,7 +105,7 @@ function HostView({ base, meta, players }) {
   const writeL = (v) => { setEl(v); dbSet(`${base}/spectrum`, { l: v, r: er }) }
   const writeR = (v) => { setEr(v); dbSet(`${base}/spectrum`, { l: el, r: v }) }
   const rollFrom = (arr) => { const [l, r] = arr[Math.floor(Math.random() * arr.length)]; setEl(l); setEr(r); dbSet(`${base}/spectrum`, { l, r }) }
-  // 마스터 지목 — 타깃은 이제 마스터가 직접 고른다(랜덤 배정 없음)
+  // 출제자 지목 — 타깃은 이제 출제자가 직접 고른다(랜덤 배정 없음)
   const pickMaster = (pid) => dbUpdate(base, { masterId: pid, target: null, clue: null, guess: null })
 
   const guesses = toList(guessRaw).filter((g) => typeof g.value === 'number' && g.id !== masterId)
@@ -157,7 +157,7 @@ function HostView({ base, meta, players }) {
 
       {staged && spec && (
         <div className="mt-3">
-          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>클루 마스터 지목 (타깃은 이 사람이 직접 고릅니다)</div>
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>출제자 지목 (타깃은 이 사람이 직접 고릅니다)</div>
           <div className="flex flex-wrap justify-center gap-1.5">
             {players.map((p) => (
               <button key={p.id} onClick={() => pickMaster(p.id)} className="clay-btn px-3 py-1.5 text-sm font-display" style={masterId === p.id ? { background: 'var(--c-sky)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{p.nickname}</button>
@@ -170,10 +170,10 @@ function HostView({ base, meta, players }) {
       {!staged && (
         <>
           <div className="mt-2 text-sm" style={{ color: 'var(--ink-soft)' }}>
-            클루 마스터: <b style={{ color: 'var(--ink)' }}>{byId[masterId]?.nickname || '?'}</b> · 존 {z.label}(±{z.e})
+            출제자: <b style={{ color: 'var(--ink)' }}>{byId[masterId]?.nickname || '?'}</b> · 존 {z.label}(±{z.e})
           </div>
           {clue ? <div className="mt-1 font-display text-3xl" style={{ color: 'var(--c-sky)' }}>“{clue}”</div>
-                : <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>마스터가 지점·힌트 정하는 중…</div>}
+                : <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>출제자가 지점·힌트 정하는 중…</div>}
 
           <div className="mt-4">
             <SpectrumBar
@@ -187,7 +187,7 @@ function HostView({ base, meta, players }) {
               <div className="mt-3 font-display text-xl" style={{ color: 'var(--c-coral)' }}>정답 {target} · 적중 {hits.length}/{scored.length}</div>
               {masterDrinks && (
                 <div className="mt-2 clay inline-block px-4 py-2 font-display animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
-                  🍺 마스터 {byId[masterId]?.nickname} 벌칙! <span className="text-sm opacity-90">({masterReason})</span>
+                  🍺 출제자 {byId[masterId]?.nickname} 벌칙! <span className="text-sm opacity-90">({masterReason})</span>
                 </div>
               )}
               <div className="mt-3 max-w-md mx-auto space-y-1">
@@ -225,7 +225,7 @@ function PlayerView({ base, meta, me }) {
 
   if (!spec || !masterId) return <p className="text-center py-10" style={{ color: 'var(--ink-soft)' }}>진행자가 준비 중… 🌈</p>
 
-  // ── 클루 마스터: 바에서 타깃 직접 지정 + 힌트 ──
+  // ── 출제자: 바에서 타깃 직접 지정 + 힌트 ──
   if (masterId === me.id) {
     const shown = target ?? tVal
     return (
@@ -270,7 +270,7 @@ function PlayerView({ base, meta, me }) {
     <div className="text-center">
       <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>{spec.l} ↔ {spec.r}</p>
       {clue ? <div className="font-display text-2xl my-2" style={{ color: 'var(--c-sky)' }}>“{clue}”</div>
-            : <p className="my-3" style={{ color: 'var(--ink-soft)' }}>클루 마스터의 힌트 대기 중…</p>}
+            : <p className="my-3" style={{ color: 'var(--ink-soft)' }}>출제자의 힌트 대기 중…</p>}
       <div className="mt-2">
         <SpectrumBar spec={spec} target={null} zone={zone} showZone={false} markers={[{ key: 'me', value: val }]} />
       </div>

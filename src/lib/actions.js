@@ -21,6 +21,9 @@ const seedTeams = () =>
     return acc
   }, {})
 
+// 하트: 방 전역 재화. 입장 시 기본 지급, 밤 마지막 '하트 시그널'에서 마음에 드는 사람에게 보냄.
+export const BASE_HEARTS = 3
+
 // ── 테스트 운영용 고정 방 ────────────────────────
 export const SB_ROOM_ID = 'SB'
 export const SB_HOST_PIN = '4321'
@@ -148,6 +151,7 @@ export async function joinRoom(roomId, playerId, nickname) {
       connected: true,
       teamId: existing?.teamId ?? null,
       items: existing?.items || initialItems('personal'),
+      hearts: existing?.hearts ?? BASE_HEARTS, // 전역 하트 재화 기본 지급
     }
     return players
   })
@@ -228,6 +232,10 @@ export const endGame = (roomId) =>
 // ── 호스트: 점수 / 재화 정산 ─────────────────────
 export const addTeamScore = (roomId, teamId, delta) =>
   dbTransaction(roomPath(roomId, `teams/${teamId}/score`), (cur) => (cur || 0) + delta)
+
+// 하트 지급/차감 (전역 재화, 0 미만 방지)
+export const awardHearts = (roomId, playerId, delta) =>
+  dbTransaction(roomPath(roomId, `players/${playerId}/hearts`), (cur) => Math.max(0, (cur ?? 0) + delta))
 
 // scope: 'personal' → ownerId = playerId,  'team' → ownerId = teamId
 export function changeItem(roomId, scope, ownerId, itemId, delta) {

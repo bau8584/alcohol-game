@@ -2,16 +2,15 @@
 // 큰 화면(/host)과 '진행자도 참가자' 모드의 진행자 폰(Player의 🖥 진행 탭)에서 함께 쓴다.
 // 게임 로직은 건드리지 않고, 기존 HostView·컨트롤·AwardPanel을 그대로 재사용한다.
 import { useEffect, useState } from 'react'
-import { GAMES, gameById, GENRES, TRAITS, genreById, traitById, isBeginner } from '../games/registry'
+import { GAMES, gameById, isBeginner } from '../games/registry'
 import { startGame, setRoundStatus, setPrompt, newRound, endGame, playBase } from '../lib/actions'
-import AwardPanel from './AwardPanel'
+import { howById } from '../games/howto'
 import HowToPlay from './HowToPlay'
 import { Button, Card, PhaseTag, TeamBadge } from './ui'
 import { useDebounced } from '../lib/useDebounced'
 
 export default function HostConsole({ roomId, meta, players, teams, compact = false }) {
   const [prompt, setPromptLocal] = useState('')
-  const [filter, setFilter] = useState(null) // { kind: 'genre'|'trait'|'beginner', id }
   const [previewId, setPreviewId] = useState(null) // 시작 전 규칙 미리보기
   const game = meta?.activeGameId ? gameById(meta.activeGameId) : null
   const base = game ? playBase(roomId, meta.roundSeq, game.id) : null
@@ -39,16 +38,8 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
     : () => newRound(roomId)
 
   if (!game) {
-    const matches = (g) =>
-      !filter ||
-      (filter.kind === 'beginner' ? isBeginner(g.id)
-        : filter.kind === 'genre' ? (g.genres || []).includes(filter.id)
-        : (g.traits || []).includes(filter.id))
-    // 필터 없을 땐 입문 추천을 맨 앞으로
-    const shown = GAMES.filter(matches)
-    const ordered = filter ? shown : [...shown].sort((a, b) => (isBeginner(b.id) ? 1 : 0) - (isBeginner(a.id) ? 1 : 0))
-    const chip = () => 'clay-btn px-3 py-1.5 text-sm whitespace-nowrap'
-    const chipStyle = (active) => (active ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' })
+    // 카테고리 필터 없이 전체를 한 그리드로. 입문 추천만 맨 앞으로 정렬.
+    const ordered = [...GAMES].sort((a, b) => (isBeginner(b.id) ? 1 : 0) - (isBeginner(a.id) ? 1 : 0))
     const previewGame = previewId ? gameById(previewId) : null
     return (
       <Card>
@@ -56,37 +47,14 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
           <h2 className="font-display text-2xl">🎮 게임 선택</h2>
           <span className="text-sm shrink-0" style={{ color: 'var(--ink-soft)' }}>접속 {players.length}명</span>
         </div>
-        {!compact && <p className="text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>처음이면 <b style={{ color: 'var(--c-mint)' }}>🔰 입문 추천</b>부터. 카드의 <b>❓</b>를 누르면 시작 전에 규칙을 볼 수 있어요.</p>}
-        <div className="flex flex-wrap gap-2 mb-4">
-          <button onClick={() => setFilter(null)} className={chip()} style={chipStyle(!filter)}>전체 {GAMES.length}</button>
-          <button onClick={() => setFilter(filter?.kind === 'beginner' ? null : { kind: 'beginner' })} className={chip()} style={chipStyle(filter?.kind === 'beginner')}>🔰 입문 추천</button>
-          <span className="w-px self-stretch my-0.5" style={{ background: 'var(--ink-soft)', opacity: 0.3 }} />
-          {GENRES.map((t) => {
-            const active = filter?.kind === 'genre' && filter.id === t.id
-            return <button key={t.id} onClick={() => setFilter(active ? null : { kind: 'genre', id: t.id })} className={chip()} style={chipStyle(active)}>{t.emoji} {t.label}</button>
-          })}
-          <span className="w-px self-stretch my-0.5" style={{ background: 'var(--ink-soft)', opacity: 0.3 }} />
-          {TRAITS.map((t) => {
-            const active = filter?.kind === 'trait' && filter.id === t.id
-            return <button key={t.id} onClick={() => setFilter(active ? null : { kind: 'trait', id: t.id })} className={chip()} style={chipStyle(active)}>{t.emoji} {t.label}</button>
-          })}
-        </div>
+        {!compact && <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>카드의 <b>❓</b>를 누르면 시작 전에 규칙을 볼 수 있어요.</p>}
         <div className={`grid gap-3 ${compact ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3'}`}>
           {ordered.map((g) => (
             <div key={g.id} className="relative clay-btn p-4 text-left" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>
-              <button onClick={() => startGame(roomId, g.id)} disabled={!players.length} className="block w-full text-left disabled:opacity-50">
-                <div className="flex items-start justify-between">
-                  <div className="text-3xl">{g.emoji}</div>
-                  <div className="flex gap-1 text-sm">
-                    {(g.genres || []).map((id) => genreById(id) && <span key={id} title={genreById(id).label}>{genreById(id).emoji}</span>)}
-                    {(g.traits || []).map((id) => traitById(id) && <span key={id} title={traitById(id).label}>{traitById(id).emoji}</span>)}
-                  </div>
-                </div>
-                <div className="font-display text-lg mt-1 flex items-center gap-1">
-                  {isBeginner(g.id) && <span className="text-xs px-1.5 py-0.5 rounded-full shrink-0" style={{ background: 'var(--c-mint)', color: '#fff' }}>🔰</span>}
-                  {g.name}
-                </div>
-                <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>{g.tagline}</div>
+              <button onClick={() => startGame(roomId, g.id)} disabled={!players.length} className="block w-full text-left disabled:opacity-50 pr-7">
+                <div className="text-3xl">{g.emoji}</div>
+                <div className="font-display text-lg mt-1">{g.name}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>{howById(g.id)?.goal || g.tagline}</div>
               </button>
               <button
                 onClick={() => setPreviewId(g.id)}
@@ -98,7 +66,6 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
               </button>
             </div>
           ))}
-          {!ordered.length && <div className="col-span-full text-sm py-6 text-center" style={{ color: 'var(--ink-soft)' }}>해당 태그의 게임이 없어요.</div>}
         </div>
 
         {previewGame && (
@@ -185,7 +152,6 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
           <game.HostView roomId={roomId} base={base} meta={meta} players={players} teams={teams} writePrompt={writePrompt} />
         </div>
       </Card>
-      <AwardPanel roomId={roomId} players={players} teams={teams} />
     </>
   )
 }

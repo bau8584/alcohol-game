@@ -3,6 +3,7 @@
 // 오래 버틸수록 이득이지만 폭탄은 3초~최대초 사이 랜덤. 하나둘 빠지는 게 화면에 실시간으로 보인다.
 import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet, dbUpdate, toList, serverNow } from '../lib/db'
+import { setRoundStatus } from '../lib/actions'
 import { Button } from '../components/ui'
 
 const MIN_MS = 3000
@@ -43,7 +44,7 @@ function useBoard(base, players, boomMs) {
   }, [raw, players, boomMs])
 }
 
-function HostView({ base, players, teams }) {
+function HostView({ roomId, base, players, teams }) {
   const startedAt = useValue(`${base}/startedAt`)
   const boomAt = useValue(`${base}/boomAt`)
   const boomedAt = useValue(`${base}/boomedAt`)
@@ -70,8 +71,12 @@ function HostView({ base, players, teams }) {
       boomedAt: null,
       bank: null,
     })
+    setRoundStatus(roomId, 'open') // '내 플레이' 자동 전환 신호
   }
-  const reset = () => dbUpdate(base, { startedAt: null, boomAt: null, boomedAt: null, bank: null })
+  const reset = () => {
+    dbUpdate(base, { startedAt: null, boomAt: null, boomedAt: null, bank: null })
+    setRoundStatus(roomId, 'staged') // 다음 시작이 staged→open 전환이 되도록 리셋
+  }
 
   const idle = !startedAt
   const elapsed = startedAt ? (boomedAt ? boomedAt - startedAt : now - startedAt) : 0
