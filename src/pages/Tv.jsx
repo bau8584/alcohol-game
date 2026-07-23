@@ -49,9 +49,6 @@ export default function Tv() {
             <span className="font-display text-3xl md:text-4xl">{game.emoji} {game.name}</span>
             <PhaseTag status={meta.roundStatus} />
           </div>
-          <div className="max-w-lg mx-auto mb-4">
-            <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} />
-          </div>
           {/* 읽기 전용: 내부 조작 버튼이 눌리지 않도록 차단 */}
           <div className="pointer-events-none select-none">
             <game.HostView roomId={roomId} base={base} meta={meta} players={players} teams={teams} writePrompt={noop} />
@@ -77,8 +74,15 @@ export default function Tv() {
         </div>
       )}
 
+      {/* 규칙은 게임을 가리지 않게 맨 아래에 접어둔다 */}
+      {game && (
+        <div className="max-w-lg mx-auto">
+          <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} defaultOpen={false} />
+        </div>
+      )}
+
       <p className="text-center text-xs" style={{ color: 'var(--ink-soft)' }}>
-        📺 화면 전용 · 진행은 진행자 폰에서 하세요
+        📺 공용 화면 (관전 전용) · 진행은 진행자 폰에서 하세요
       </p>
     </div>
   )

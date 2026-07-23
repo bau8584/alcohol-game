@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
-import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost } from '../lib/actions'
+import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost, isPlayerOffline, reclaimRecord } from '../lib/actions'
 import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
 import HeartBar from '../components/HeartBar'
+import LobbyQuestions from '../components/LobbyQuestions'
 import HowToPlay from '../components/HowToPlay'
 import SharedResult from '../components/SharedResult'
 import HostConsole from '../components/HostConsole'
@@ -24,15 +25,22 @@ export default function Player() {
   const [nick, setNick] = useState(getSession().nickname || '')
   const [joinErr, setJoinErr] = useState('')
   const [joining, setJoining] = useState(false)
+  const [reclaimId, setReclaimId] = useState(null) // 오프라인 유령 기록 이어받기 대상
   const [tab, setTab] = useState('play') // 진행자일 때만 사용: 'play' | 'host'
   const [qrOpen, setQrOpen] = useState(false)
   const me = players.find((p) => p.id === playerId)
   const myTeam = teams.find((t) => t.id === me?.teamId)
 
   // 완전히 나가기: 방에서 내 레코드 삭제 + 폰 저장 기록(playerId·닉네임) 삭제 → 다음 접속은 새 신원.
+  // (B) 삭제가 확실히 반영된 뒤에만 신원을 지운다. 실패하면 신원 유지 → 재시도 시 같은 id로 재입장(유령 충돌 방지).
   const leaveAndReset = async () => {
     if (!confirm('방에서 나가고 이 폰의 접속 기록(닉네임)을 지울까요?\n다음에 다시 들어오면 닉네임부터 새로 정해요.')) return
-    try { await leaveRoom(roomId, playerId) } catch { /* 레코드가 이미 없어도 무시 */ }
+    try {
+      await leaveRoom(roomId, playerId)
+    } catch {
+      alert('나가기에 실패했어요(네트워크). 잠시 후 다시 시도해주세요.')
+      return
+    }
     clearSession()
     nav('/')
   }
@@ -73,12 +81,35 @@ export default function Player() {
       if (!n || joining) return
       setJoining(true)
       setJoinErr('')
+      setReclaimId(null)
       try {
         await joinRoom(roomId, playerId, n)
         saveSession({ nickname: n, roomId })
       } catch (e) {
-        setJoinErr(e.code === 'DUP_NICK' ? '이미 사용 중인 닉네임이에요. 다른 닉네임을 써주세요.' : '입장 실패: ' + e.message)
+        if (e.code === 'DUP_NICK') {
+          // (A) 그 닉네임을 오프라인 유령만 점유 중이면 → 이어받기 제안
+          const offline = e.holderId ? await isPlayerOffline(roomId, e.holderId).catch(() => false) : false
+          if (offline) {
+            setReclaimId(e.holderId)
+            setJoinErr('')
+          } else {
+            setJoinErr('이미 사용 중인 닉네임이에요. 다른 닉네임을 써주세요.')
+          }
+        } else {
+          setJoinErr('입장 실패: ' + e.message)
+        }
         setJoining(false)
+      }
+    }
+    // (C) 오프라인 유령 기록을 이어받아 입장 — 옛 신원(점수·팀)을 그대로 승계
+    const doReclaim = async () => {
+      const n = nick.trim()
+      try {
+        await reclaimRecord(roomId, reclaimId, n)
+        saveSession({ playerId: reclaimId, nickname: n, roomId })
+        location.reload()
+      } catch (e) {
+        setJoinErr('이어받기 실패: ' + e.message)
       }
     }
     return (
@@ -90,6 +121,15 @@ export default function Player() {
           <input value={nick} onChange={(e) => { setNick(e.target.value.slice(0, 12)); setJoinErr('') }} placeholder="닉네임" className="clay-inset w-full px-4 py-3 text-center text-lg mb-3" onKeyDown={(e) => e.key === 'Enter' && submit()} />
           <Button className="w-full" onClick={submit} disabled={joining}>{joining ? '입장 중…' : '입장'}</Button>
           {joinErr && <p className="mt-3 font-bold" style={{ color: 'var(--c-coral)' }}>{joinErr}</p>}
+          {reclaimId && (
+            <div className="mt-3 clay-inset p-3 text-sm">
+              <p className="mb-2">이 닉네임을 쓰던 사람이 <b>지금 접속이 끊긴 상태</b>예요. 예전의 나였나요?</p>
+              <Button className="w-full" onClick={doReclaim}>✅ 이 닉네임은 나예요 · 이어서 입장 (점수·팀 유지)</Button>
+              <button onClick={() => { setReclaimId(null); setJoinErr('다른 닉네임을 써주세요.') }} className="mt-2 text-xs underline" style={{ color: 'var(--ink-soft)' }}>
+                아니에요, 다른 닉네임 쓸게요
+              </button>
+            </div>
+          )}
           {getSession().playerId && (
             <button onClick={clearStoredIdentity} className="mt-3 text-xs underline" style={{ color: 'var(--ink-soft)' }}>
               이전 접속 기록 지우고 새로 시작
@@ -194,10 +234,13 @@ export default function Player() {
             {game && base ? (
               <game.PlayerView roomId={roomId} base={base} meta={meta} players={players} teams={teams} me={me} myTeam={myTeam} />
             ) : (
-              <div className="text-center py-16" style={{ color: 'var(--ink-soft)' }}>
-                <div className="text-5xl mb-3 animate-pulse">⏳</div>
-                진행자가 게임을 고르는 중…
-                <div className="mt-1 text-sm">{iAmHost ? '🖥 진행 탭에서 게임을 고르세요!' : '메인 화면을 봐주세요!'}</div>
+              <div>
+                <div className="text-center py-6" style={{ color: 'var(--ink-soft)' }}>
+                  <div className="text-4xl mb-2 animate-pulse">⏳</div>
+                  진행자가 게임을 고르는 중…
+                  <div className="mt-1 text-sm">{iAmHost ? '🖥 진행 탭에서 게임을 고르세요!' : '기다리는 동안 질문을 적어봐요 👇'}</div>
+                </div>
+                <LobbyQuestions roomId={roomId} me={me} />
               </div>
             )}
           </div>

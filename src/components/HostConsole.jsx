@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react'
 import { GAMES, gameById, isBeginner } from '../games/registry'
 import { startGame, setRoundStatus, setPrompt, newRound, endGame, playBase } from '../lib/actions'
+import { useChildList, roomPath } from '../lib/db'
 import { howById } from '../games/howto'
 import HowToPlay from './HowToPlay'
 import { Button, Card, PhaseTag, TeamBadge } from './ui'
@@ -16,6 +17,8 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
   const base = game ? playBase(roomId, meta.roundSeq, game.id) : null
   // 프롬프트 DB 쓰기는 디바운스 → 타이핑 중 방 전원 재전송 최소화
   const debouncedSetPrompt = useDebounced((v) => setPrompt(roomId, v), 400)
+  // 로비에서 참가자들이 미리 적어둔 질문 풀 — 프롬프트 게임에서 뽑아 재활용
+  const qpool = useChildList(roomPath(roomId, 'qpool'))
 
   useEffect(() => {
     setPromptLocal(meta?.prompt || '')
@@ -54,7 +57,7 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
               <button onClick={() => startGame(roomId, g.id)} disabled={!players.length} className="block w-full text-left disabled:opacity-50 pr-7">
                 <div className="text-3xl">{g.emoji}</div>
                 <div className="font-display text-lg mt-1">{g.name}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>{howById(g.id)?.goal || g.tagline}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>{howById(g.id)?.action || howById(g.id)?.goal || g.tagline}</div>
               </button>
               <button
                 onClick={() => setPreviewId(g.id)}
@@ -114,6 +117,16 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
                 title="랜덤 질문"
               >
                 🎲
+              </button>
+            )}
+            {qpool.length > 0 && (
+              <button
+                onClick={() => writePrompt(qpool[Math.floor(Math.random() * qpool.length)].text)}
+                className="clay-btn px-3 shrink-0 font-display text-sm"
+                style={{ background: 'var(--c-sky)', color: '#fff' }}
+                title="참가자들이 로비에서 적은 질문에서 뽑기"
+              >
+                📥 참가자질문
               </button>
             )}
           </div>

@@ -136,9 +136,9 @@ export default function Home() {
           <p className="text-sm text-[var(--ink-soft)]">코드·PIN 자동 발급 → 바로 시작</p>
         </div>
 
-        {/* 참가자: 코드로 입장 */}
+        {/* 코드로 입장: 참가자 or 공용 화면 (둘 다 방 코드 필요) */}
         <div className="clay p-5 bg-[var(--surface)] space-y-3 text-center">
-          <div className="text-lg font-bold">📱 참가자</div>
+          <div className="text-lg font-bold">📱 코드로 입장</div>
           <input
             value={joinCode}
             onChange={(e) => { setJoinCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setErr('') }}
@@ -147,16 +147,24 @@ export default function Home() {
             className={clayInput}
             onKeyDown={(e) => e.key === 'Enter' && join('play')}
           />
-          <Button variant="ghost" className="w-full" onClick={() => join('play')} disabled={busy || !joinCode}>
-            🎉 참가하기
+          <Button className="w-full" onClick={() => join('play')} disabled={busy || !joinCode}>
+            🎉 참가자로 입장
           </Button>
-          <button
-            onClick={() => join('tv')}
-            disabled={busy || !joinCode}
-            className="text-sm text-[var(--ink-soft)] underline disabled:opacity-40"
-          >
-            📺 이 코드로 큰 화면(TV)만 띄우기
-          </button>
+
+          {/* 공용 화면(관전용) — 참가자도 진행자도 아닌 '다 같이 보는 화면' */}
+          <div className="pt-3 mt-1 border-t" style={{ borderColor: 'var(--surface-2)' }}>
+            <button
+              onClick={() => join('tv')}
+              disabled={busy || !joinCode}
+              className="clay-btn w-full py-2.5 font-bold text-sm disabled:opacity-40"
+              style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}
+            >
+              📺 공용 화면으로 띄우기
+            </button>
+            <p className="text-xs mt-1.5" style={{ color: 'var(--ink-soft)' }}>
+              TV·모니터에 띄워 다 같이 보는 관전 화면 · 조작·참여 없음
+            </p>
+          </div>
         </div>
       </div>
 

@@ -6,6 +6,8 @@ import {
   dbGet,
   dbTransaction,
   dbRemove,
+  dbPush,
+  SERVER_TS,
 } from './db'
 import { DEFAULT_TEAMS, TEAM_COLORS, TEAM_PALETTE } from '../config/teams'
 import { initialItems } from '../config/items'
@@ -132,6 +134,31 @@ export async function isNicknameTaken(roomId, playerId, nickname) {
   )
 }
 
+// 닉네임을 점유 중인 다른 참가자의 id (없으면 null). DUP 안내/이어받기에 사용.
+export async function nicknameHolder(roomId, playerId, nickname) {
+  const players = await dbGet(roomPath(roomId, 'players'))
+  const key = nickKey(nickname)
+  const hit = Object.entries(players || {}).find(
+    ([id, p]) => id !== playerId && p && nickKey(p.nickname) === key
+  )
+  return hit ? hit[0] : null
+}
+
+// 해당 참가자가 '지금 접속 끊긴(유령)' 상태인지 — presence(실시간)로 판정. true=오프라인 유령.
+export async function isPlayerOffline(roomId, playerId) {
+  const online = await dbGet(roomPath(roomId, `presence/${playerId}`))
+  return online !== true
+}
+
+// 오프라인 유령 기록을 이어받기: 그 기록의 닉/연결만 되살린다.
+// (호출측에서 세션 playerId=ghostId 로 바꾸고 새로고침 → 그 기록이 곧 '나'가 됨. 점수·팀 유지)
+export async function reclaimRecord(roomId, ghostId, nickname) {
+  await dbUpdate(roomPath(roomId, `players/${ghostId}`), {
+    connected: true,
+    nickname: (nickname || '').trim(),
+  })
+}
+
 // ── 참가자 입장 / 팀 선택 ────────────────────────
 // players 노드 트랜잭션으로 닉네임 중복을 원자적으로 차단. 중복이면 committed=false → 에러 throw.
 export async function joinRoom(roomId, playerId, nickname) {
@@ -158,6 +185,7 @@ export async function joinRoom(roomId, playerId, nickname) {
   if (!res.committed) {
     const err = new Error('이미 사용 중인 닉네임이에요.')
     err.code = 'DUP_NICK'
+    err.holderId = await nicknameHolder(roomId, playerId, name) // 이어받기 판단용
     throw err
   }
 }
@@ -215,6 +243,17 @@ export const setRoundStatus = (roomId, status) =>
 
 export const setPrompt = (roomId, prompt) =>
   dbUpdate(roomPath(roomId, 'meta'), { prompt })
+
+// ── 질문 풀(로비): 참가자들이 대기 중 미리 적어두는 공용 질문 목록. 방 전역·지속. ──
+// 프롬프트 게임(진선미·군중심리·후던잇 등)에서 '📥 참가자 질문'으로 뽑아 재활용.
+export const addQuestion = (roomId, text, by, byId) =>
+  dbPush(roomPath(roomId, 'qpool'), { text: String(text).slice(0, 120), by: by || '익명', byId: byId || null, at: SERVER_TS })
+
+export const removeQuestion = (roomId, key) =>
+  dbRemove(roomPath(roomId, `qpool/${key}`))
+
+export const clearQpool = (roomId) =>
+  dbRemove(roomPath(roomId, 'qpool'))
 
 // ── 호스트: 19금(성인) 콘텐츠 허용 토글. 기본 OFF(방 생성/초기화 시 미설정=off) ──
 export const setAdultEnabled = (roomId, v) =>
