@@ -242,7 +242,7 @@ function PlayerView({ base, meta, players, me }) {
       <p className="text-center text-sm mt-1" style={{ color: 'var(--c-coral)' }}>
         🧠 내 소신 말고 <b>남들이 제일 많이 뽑을 사람</b>을 고르세요!
       </p>
-      <p className="text-center text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>상위 {safeRank}등 안에 들면 안전 · 아니면 벌칙 🍺</p>
+      <p className="text-center text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>지목당한 사람은 벌칙 없음 · <b>군중을 못 읽은 내가 벌칙</b> 🍺 (상위 {safeRank}등 맞히면 안전)</p>
 
       <div className="grid grid-cols-2 gap-2 mt-3">
         {players.map((p) => (
@@ -274,7 +274,7 @@ export default {
   id: 'herd',
   name: '군중심리',
   emoji: '👥',
-  tagline: '남들이 뽑을 사람 맞히기 · 틀리면 벌칙',
+  tagline: '군중 예측 · 못 맞힌 내가 벌칙',
   genres: ['telepathy', 'mind'],
   traits: ['solo'],
   HostView,

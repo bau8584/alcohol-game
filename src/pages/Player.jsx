@@ -7,6 +7,7 @@ import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/se
 import { markPresence, roomPath } from '../lib/db'
 import HeartBar from '../components/HeartBar'
 import HowToPlay from '../components/HowToPlay'
+import SharedResult from '../components/SharedResult'
 import HostConsole from '../components/HostConsole'
 import RoomPanel from '../components/RoomPanel'
 import SettingsMenu from '../components/SettingsMenu'
@@ -200,6 +201,8 @@ export default function Player() {
               </div>
             )}
           </div>
+          {/* 결과 화면: 공개되면 자동으로 펼쳐지고, 토글로 언제든 여닫기 — 호스트 화면 없이도 결과 확인 */}
+          {game && base && <SharedResult key={`res-${game.id}`} game={game} roomId={roomId} base={base} meta={meta} players={players} teams={teams} />}
           {/* 규칙은 게임 화면 아래에, 기본은 접힌 상태 — 게임 진행을 가리지 않도록 */}
           {game && base && <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} defaultOpen={false} />}
         </>

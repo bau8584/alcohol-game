@@ -2,7 +2,7 @@
 // 출제자가 타깃을 직접 지정(자유) · 3단 존 판정(🎯완벽/👍근접/😅아슬/밖=벌칙) · 존 폭은 호스트가 조절.
 // 출제자 양쪽 벌칙: 적중 0명(설명 못함) 또는 전원 적중(너무 쉽게 냄) → 출제자가 마심. '적당히 어렵게'가 최적해.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useValue, dbSet, dbUpdate, toList } from '../lib/db'
+import { useValue, dbSet, dbUpdate, dbTransaction, toList } from '../lib/db'
 import { Button } from '../components/ui'
 
 // 스펙트럼 기준: '진짜로 의견이 갈리는가'. 다들 비슷하게 생각하는 건 논쟁이 안 터져서 뺐다.
@@ -105,6 +105,12 @@ function HostView({ base, meta, players }) {
   const writeL = (v) => { setEl(v); dbSet(`${base}/spectrum`, { l: v, r: er }) }
   const writeR = (v) => { setEr(v); dbSet(`${base}/spectrum`, { l: el, r: v }) }
   const rollFrom = (arr) => { const [l, r] = arr[Math.floor(Math.random() * arr.length)]; setEl(l); setEr(r); dbSet(`${base}/spectrum`, { l, r }) }
+  // 스펙트럼 자동 뽑기 — 출제자가 손 안 대도 되게, 대기 상태에서 비어 있으면 한 번 자동 채움(트랜잭션=화면 여러 개여도 1회).
+  useEffect(() => {
+    if (!staged || spec !== null) return
+    const [l, r] = SPECTRA[Math.floor(Math.random() * SPECTRA.length)]
+    dbTransaction(`${base}/spectrum`, (cur) => cur || { l, r })
+  }, [staged, spec, base])
   // 출제자 지목 — 타깃은 이제 출제자가 직접 고른다(랜덤 배정 없음)
   const pickMaster = (pid) => dbUpdate(base, { masterId: pid, target: null, clue: null, guess: null })
 
@@ -123,28 +129,15 @@ function HostView({ base, meta, players }) {
     <div className="text-center">
       {staged && (
         <div className="mb-4 max-w-lg mx-auto">
-          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>스펙트럼 양 극단 — 직접 쓰거나 🎲로 뽑기</div>
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>스펙트럼 — 자동으로 뽑혀요 · 바꾸려면 수정하거나 🎲</div>
           <div className="flex gap-2 items-center">
             <input value={el} onChange={(e) => writeL(e.target.value)} placeholder="왼쪽 극단" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
             <span className="font-display" style={{ color: 'var(--ink-soft)' }}>↔</span>
             <input value={er} onChange={(e) => writeR(e.target.value)} placeholder="오른쪽 극단" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
           </div>
           <div className="flex gap-2 justify-center mt-2">
-            <button onClick={() => rollFrom(SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 스펙트럼 뽑기</button>
+            <button onClick={() => rollFrom(SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 다시 뽑기</button>
             {meta.adultEnabled && <button onClick={() => rollFrom(ADULT_SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
-          </div>
-
-          {/* 존 폭 */}
-          <div className="mt-4">
-            <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>정답 존 폭 (난이도)</div>
-            <div className="flex justify-center gap-2">
-              {Object.values(ZONES).map((zz) => (
-                <button key={zz.key} onClick={() => dbSet(`${base}/zone`, zz.key)} className="clay-btn px-4 py-2 font-display"
-                  style={zone === zz.key ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
-                  {zz.label} <span className="text-xs opacity-80">±{zz.e}</span>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       )}

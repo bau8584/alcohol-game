@@ -90,7 +90,7 @@ function HostView({ base, players }) {
     return (
       <div className="text-center">
         <p className="font-display text-lg mb-1">✍️ 익명으로 한 문장씩 걷는 중</p>
-        <p className="text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>진실이든 거짓이든 한 문장 + 진실/거짓 체크</p>
+        <p className="text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>진실이든 거짓이든 한 문장 + 진실/거짓 체크<br />→ 다 모이면 <b>한 문장씩</b> 공개해서 전원이 OX로 맞혀요</p>
         <div className="text-2xl font-display mb-3">{submitted.length} / {players.length} 제출</div>
         <div className="flex flex-wrap justify-center gap-1.5 mb-4">
           {players.map((p) => (
@@ -130,8 +130,11 @@ function HostView({ base, players }) {
   // quiz
   return (
     <div className="text-center">
-      <div className="text-sm font-display mb-1" style={{ color: 'var(--ink-soft)' }}>{idx + 1} / {orderArr.length}</div>
+      <div className="clay-inset inline-block px-4 py-1 mb-2 font-display" style={{ color: 'var(--c-grape)' }}>
+        🃏 문장 {idx + 1} / {orderArr.length} · 한 문장씩 맞혀요
+      </div>
       <div className="clay px-5 py-6 max-w-md mx-auto mb-3">
+        <div className="text-xs mb-1" style={{ color: 'var(--ink-soft)' }}>지금 이 문장은…</div>
         <div className="font-display text-2xl leading-snug">“{cur?.text}”</div>
       </div>
 
@@ -223,6 +226,7 @@ function PlayerView({ base, players, me }) {
 
   return (
     <div className="text-center">
+      <div className="text-sm font-display mb-1" style={{ color: 'var(--c-grape)' }}>🃏 문장 {idx + 1} / {orderArr.length} · 이 문장을 맞혀요</div>
       <div className="clay px-4 py-4 mb-3 font-display text-xl">“{cur?.text}”</div>
       {!shown ? (
         <div className="flex gap-2">

@@ -139,7 +139,13 @@ function HostView({ base, meta, players, writePrompt }) {
 
       {reveal ? (
         <>
-          {top && <div className="text-center mt-2"><span style={{ color: 'var(--ink-soft)' }}>최다 </span><span className="font-display text-3xl">{top.nickname}</span></div>}
+          {top ? (
+            <div className="text-center mt-2 clay p-3 max-w-sm mx-auto animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+              <div className="text-sm opacity-90">🎯 최다 득표 · 당첨!</div>
+              <div className="font-display text-4xl">{top.nickname}</div>
+              <div className="text-sm opacity-90 mt-0.5">벌칙 / 미션 수행 🍺</div>
+            </div>
+          ) : null}
           <div className="mt-3 space-y-2 max-w-lg mx-auto">
             {ranked.filter((r) => r.votes > 0).map((r) => (
               <div key={r.id} className="flex items-center gap-2">
@@ -212,7 +218,8 @@ function PlayerView({ base, meta, players, me }) {
         )}
       </div>
 
-      <p className="text-center mb-1" style={{ color: 'var(--ink-soft)' }}>{meta.prompt || '지목할 사람'}</p>
+      <p className="text-center font-display text-lg">{meta.prompt || '지목할 사람'}</p>
+      <p className="text-center text-sm mt-1 mb-2" style={{ color: 'var(--c-coral)' }}>🎯 솔직하게 지목! <b>최다 득표자가 당첨(벌칙)</b> 🍺</p>
       {maxPick > 1 && <p className="text-center mb-3 text-sm font-bold" style={{ color: 'var(--c-grape)' }}>최대 {maxPick}명 지목</p>}
       <div className="grid grid-cols-3 gap-2">
         {players.map((p) => (
@@ -241,7 +248,7 @@ export default {
   id: 'pick',
   name: '고르기',
   emoji: '🎯',
-  tagline: '누구를 지목? · 득표 순위',
+  tagline: '지목 여론조사 · 최다 득표자가 당첨(벌칙)',
   genres: ['mind'],
   traits: ['anon', 'solo'],
   controls: { startLabel: '▶ 시작', resetLabel: '🔄 새 질문' },

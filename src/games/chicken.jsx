@@ -13,6 +13,14 @@ const MEDALS = ['🥇', '🥈', '🥉']
 
 const fmt = (ms) => (Math.max(0, ms) / 1000).toFixed(2)
 
+// 위험도 0~1 — MIN_MS(안전) 이후부터 maxSec(최대)까지 선형으로 오른다.
+const dangerOf = (ms, maxSec) => {
+  const span = maxSec * 1000 - MIN_MS
+  return span <= 0 ? 0 : Math.max(0, Math.min(1, (ms - MIN_MS) / span))
+}
+// 위험도에 따라 초록→노랑→빨강으로 달아오르는 색
+const heatColor = (d) => (d <= 0 ? 'var(--c-mint)' : `hsl(${Math.round(140 - 140 * d)}, 85%, ${Math.round(52 - 8 * d)}%)`)
+
 // 진행 중일 때만 도는 시계 (서버 기준 — 기기 시계 차이 무시)
 function useTicker(on) {
   const [now, setNow] = useState(serverNow())
@@ -80,6 +88,7 @@ function HostView({ roomId, base, players, teams }) {
 
   const idle = !startedAt
   const elapsed = startedAt ? (boomedAt ? boomedAt - startedAt : now - startedAt) : 0
+  const hostDanger = running ? dangerOf(elapsed, maxSec) : 0
   const teamColor = (tid) => teams.find((t) => t.id === tid)?.color || 'var(--ink)'
 
   return (
@@ -104,13 +113,18 @@ function HostView({ roomId, base, players, teams }) {
         </div>
       ) : (
         <div className="mt-4">
-          <div className="font-display tabular-nums" style={{ fontSize: '5rem', lineHeight: 1, color: boomedAt ? 'var(--c-coral)' : 'var(--ink)' }}>
+          <div className={`font-display tabular-nums ${!boomedAt && hostDanger > 0.55 ? 'animate-pulse' : ''}`} style={{ fontSize: '5rem', lineHeight: 1, color: boomedAt ? 'var(--c-coral)' : heatColor(hostDanger) }}>
             {fmt(elapsed)}
           </div>
           {boomedAt ? (
             <div className="mt-2 font-display text-4xl animate-pop" style={{ color: 'var(--c-coral)' }}>💥 펑!</div>
           ) : (
-            <div className="mt-2" style={{ color: 'var(--ink-soft)' }}>버티는 중 {holding.length}명 · 멈춤 {banked.length}명</div>
+            <>
+              <div className="mt-1 font-display" style={{ color: elapsed > MIN_MS ? 'var(--c-coral)' : 'var(--ink-soft)' }}>
+                {elapsed > MIN_MS ? '💣 위험 구간 · 언제든 터져요!' : '🟢 안전 구간'}
+              </div>
+              <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>버티는 중 {holding.length}명 · 멈춤 {banked.length}명</div>
+            </>
           )}
         </div>
       )}
@@ -145,6 +159,7 @@ function PlayerView({ base, players, me }) {
   const startedAt = useValue(`${base}/startedAt`)
   const boomedAt = useValue(`${base}/boomedAt`)
   const mine = useValue(`${base}/bank/${me.id}`)
+  const maxSec = useValue(`${base}/maxSec`) || DEFAULT_MAX
   const boomMs = boomedAt && startedAt ? boomedAt - startedAt : null
   const { banked, holding } = useBoard(base, players, boomMs)
 
@@ -163,12 +178,16 @@ function PlayerView({ base, players, me }) {
     if (navigator.vibrate) navigator.vibrate(40)
   }
 
+  // 위험도 — 버티는 중일 때만. MIN_MS 넘으면 언제든 터질 수 있음.
+  const danger = active ? dangerOf(elapsed, maxSec) : 0
+  const inDanger = active && elapsed > MIN_MS
+
   let label = '대기'
   if (caught) label = '💥 터졌다!'
   else if (mine != null) label = boomedAt ? '✅ 탈출 성공' : '✋ 멈춤'
   else if (active) label = '✋ 멈추기!'
 
-  const bg = caught ? 'var(--c-coral)' : mine != null ? 'var(--c-mint)' : active ? 'var(--c-grape)' : 'var(--surface-2)'
+  const bg = caught ? 'var(--c-coral)' : mine != null ? 'var(--c-mint)' : active ? heatColor(danger) : 'var(--surface-2)'
   const myRank = mine != null ? banked.findIndex((b) => b.id === me.id) + 1 : 0
 
   return (
@@ -177,10 +196,11 @@ function PlayerView({ base, players, me }) {
         {startedAt ? (boomedAt ? '라운드 종료' : `버티는 중 ${holding.length}명 · 멈춤 ${banked.length}명`) : '진행자 대기 중'}
       </div>
       <button onPointerDown={bank} disabled={!active}
-        className="mt-3 w-full h-72 rounded-3xl clay-btn transition-colors flex flex-col items-center justify-center"
+        className={`mt-3 w-full h-72 rounded-3xl clay-btn transition-colors flex flex-col items-center justify-center ${inDanger && danger > 0.55 ? 'animate-pulse' : ''}`}
         style={{ background: bg, color: startedAt ? '#fff' : 'var(--ink-soft)' }}>
-        <div className="font-display text-6xl tabular-nums">{fmt(elapsed)}</div>
-        <div className="font-display text-3xl mt-3">{label}</div>
+        <div className="font-display text-3xl">{active ? (inDanger ? '🔥 지금 멈춰?!' : '오래 버틸수록 점수 ↑') : ''}</div>
+        <div className="font-display text-7xl tabular-nums mt-1">{fmt(elapsed)}</div>
+        <div className="font-display text-3xl mt-2">{label}</div>
       </button>
       {caught ? (
         <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>
@@ -191,7 +211,9 @@ function PlayerView({ base, players, me }) {
           {fmt(mine)}초에 탈출 · 현재 {myRank}위 {boomedAt ? '' : '· 남은 사람들이 더 버티면 밀립니다'}
         </p>
       ) : active ? (
-        <p className="mt-3 text-sm" style={{ color: 'var(--c-coral)' }}>조금만 더… 조금만 더… 🫣</p>
+        <p className="mt-3 font-display" style={{ color: inDanger ? 'var(--c-coral)' : 'var(--ink-soft)' }}>
+          {inDanger ? '💣 이제 언제든 터져요! 욕심내면 0점 🍺' : `${(MIN_MS / 1000).toFixed(0)}초까진 안전 · 그 뒤부턴 폭탄 랜덤`}
+        </p>
       ) : (
         <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>오래 버틸수록 고득점 · 터지면 0점 🍺</p>
       )}
