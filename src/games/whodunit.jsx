@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet, toList } from '../lib/db'
 import { Button } from '../components/ui'
+import QpoolPick from '../components/QpoolPick'
 
 // id 정렬 기반의 결정적 셔플 (공개 순서 고정 · 저자 숨김)
 const stableShuffle = (arr) => {
@@ -70,7 +71,7 @@ const ADULT = [
   '평생 비밀로 하고 싶은 밤의 기억 한 단어?',
 ]
 
-function HostView({ base, meta, players, writePrompt }) {
+function HostView({ roomId, base, meta, players, writePrompt }) {
   const ansRaw = useValue(`${base}/ans`)
   const reveal = meta.roundStatus === 'reveal'
   const [q, setQ] = useState(meta.prompt || '')
@@ -88,9 +89,10 @@ function HostView({ base, meta, players, writePrompt }) {
       {!reveal && (
         <div className="mb-3 max-w-md mx-auto">
           <input value={q} onChange={(e) => writeQ(e.target.value)} placeholder="질문 (직접 입력 또는 주사위)" className="clay-inset w-full px-3 py-2.5 text-center" />
-          <div className="flex gap-2 mt-2 justify-center">
+          <div className="flex flex-wrap gap-2 mt-2 justify-center items-center">
             <button onClick={() => rollFrom(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲 일반</button>
             {meta.adultEnabled && <button onClick={() => rollFrom(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
+            <QpoolPick roomId={roomId} onPick={writeQ} />
           </div>
         </div>
       )}

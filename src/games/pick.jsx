@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet, dbUpdate, dbPush, toList } from '../lib/db'
 import { Button } from '../components/ui'
+import QpoolPick from '../components/QpoolPick'
 
 const MAX_PICK = 5
 // 한 참가자의 선택을 배열로 정규화 (신 구조 {tid:true} / 구 구조 단일 문자열 모두 지원)
@@ -62,7 +63,7 @@ const ADULT = [
   '몸매 관리 제일 열심히 할 것 같은 사람?',
 ]
 
-function HostView({ base, meta, players, writePrompt }) {
+function HostView({ roomId, base, meta, players, writePrompt }) {
   const raw = useValue(`${base}/pick`)
   const maxPick = useValue(`${base}/maxPick`) || 1
   const suggestions = toList(useValue(`${base}/suggestions`))
@@ -97,9 +98,10 @@ function HostView({ base, meta, players, writePrompt }) {
       {!reveal && (
         <div className="mb-3 max-w-md mx-auto">
           <input value={q} onChange={(e) => writeQ(e.target.value)} placeholder="질문 (직접 입력 또는 주사위)" className="clay-inset w-full px-3 py-2.5 text-center" />
-          <div className="flex gap-2 mt-2 justify-center">
+          <div className="flex flex-wrap gap-2 mt-2 justify-center items-center">
             <button onClick={() => rollFrom(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲 일반</button>
             {meta.adultEnabled && <button onClick={() => rollFrom(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
+            <QpoolPick roomId={roomId} onPick={writeQ} />
           </div>
         </div>
       )}

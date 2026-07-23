@@ -1,31 +1,61 @@
-// 눈치게임 — 숨은 번호. 시작 시 1..N 중 '걸리는 번호'가 비밀로 뽑혀 잠긴다(호스트도 공개 전엔 못 봄).
-// 참가자는 눈치보며 아무 때나 딱 한 번 터치 → 누른 순서대로 1, 2, 3… 번호가 배정된다.
-// 공개하면 숨은 번호가 드러나고, 그 번호를 가진 사람이 벌칙. 끝까지 안 누른 사람도 벌칙.
-// 서버 ts는 '순서'를 정할 때만 쓰고 걸림 판정에는 안 쓰이므로, 지연 때문에 억울하게 걸리는 일이 없다.
-import { useEffect, useMemo } from 'react'
-import { useValue, useChildList, dbPush, dbSet, dbTransaction, SERVER_TS } from '../lib/db'
+// 눈치게임 (진짜) — 동시에 누르면 안 된다.
+// 혼자 누르면 '통과'(1번·2번… 순서 획득). Δ초 안에 둘 이상 누르면 💥겹침 → 그 사람들만 무효, 다시 눌러야 함.
+// N-1명이 통과하면 남은 1명이 꼴찌(패배). 제한시간 넘기면 아직 통과 못 한 사람 전원 패배.
+// 한 번 누르면 쿨다운 동안 못 누름(연타 방지). 동시 판정은 serverNow(서버 기준 시계)로 재서 기기가 달라도 일관.
+// 판정은 전부 각 기기에서 press 로그로 자동 계산(호스트 중재 없음).
+import { useEffect, useMemo, useState } from 'react'
+import { useValue, dbUpdate, dbPush, toList, serverNow } from '../lib/db'
+import { Button } from '../components/ui'
 
-const HIT_COUNTS = [1, 2, 3]
+const DELTA = 600 // 동시 판정 창(ms) — 이 안에 둘이 누르면 겹침
+const COOLDOWN = 4000 // 누른 뒤 못 누르는 시간(ms)
+const LIMITS = [30, 45, 60]
+const DEFAULT_LIMIT = 45
 
-// 1..n 중 k개를 섞어서 뽑기 → { nums: '3,7', n }
-function draw(n, k) {
-  const pool = Array.from({ length: n }, (_, i) => i + 1)
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[pool[i], pool[j]] = [pool[j], pool[i]]
-  }
-  const nums = pool.slice(0, Math.min(k, n)).sort((a, b) => a - b)
-  return { nums: nums.join(','), n }
+function useNow(on) {
+  const [now, setNow] = useState(serverNow())
+  useEffect(() => {
+    if (!on) return
+    const iv = setInterval(() => setNow(serverNow()), 100)
+    return () => clearInterval(iv)
+  }, [on])
+  return now
 }
 
-// taps(서버 ts) → 누른 순서대로 번호 배정. 한 사람은 첫 탭만 인정.
-function order(tapsList) {
-  const seen = new Set()
-  return tapsList
-    .filter((t) => typeof t.ts === 'number')
+// press 로그 → 통과 순서/겹침/쿨다운 계산 (윈도우 배치 방식)
+function computeClaims(pressRaw, liveIds) {
+  const liveSet = new Set(liveIds)
+  const sorted = toList(pressRaw)
+    .filter((p) => typeof p.ts === 'number' && liveSet.has(p.pid))
     .sort((a, b) => a.ts - b.ts)
-    .filter((t) => (seen.has(t.pid) ? false : (seen.add(t.pid), true)))
-    .map((t, i) => ({ ...t, k: i + 1 }))
+
+  // 쿨다운 내 재입력(도배)은 무시 — 같은 pid의 직전 유효 press로부터 COOLDOWN 이상 지나야 유효
+  const kept = []
+  const lastKept = {}
+  const lastPressTs = {}
+  for (const e of sorted) {
+    lastPressTs[e.pid] = e.ts // UI 쿨다운 표시는 '실제 마지막 입력' 기준
+    if (lastKept[e.pid] != null && e.ts - lastKept[e.pid] < COOLDOWN) continue
+    kept.push(e)
+    lastKept[e.pid] = e.ts
+  }
+
+  // 윈도우 배치: 첫 press 기준 Δ 안의 press들을 한 묶음으로. 한 명뿐이면 통과, 둘+면 겹침.
+  const claimed = [] // { pid, ts }
+  const claimedSet = new Set()
+  let lastCollision = null // { ts, pids }
+  let i = 0
+  while (i < kept.length) {
+    const start = kept[i].ts
+    const batch = []
+    let j = i
+    while (j < kept.length && kept[j].ts - start <= DELTA) { batch.push(kept[j]); j++ }
+    const pids = [...new Set(batch.map((b) => b.pid).filter((pid) => !claimedSet.has(pid)))]
+    if (pids.length === 1) { claimed.push({ pid: pids[0], ts: start }); claimedSet.add(pids[0]) }
+    else if (pids.length >= 2) { lastCollision = { ts: start, pids } }
+    i = j
+  }
+  return { claimed, claimedSet, lastCollision, lastPressTs }
 }
 
 function useNameOf(players) {
@@ -35,151 +65,166 @@ function useNameOf(players) {
   }, [players])
 }
 
-// 숨은 번호 + 순서 배정을 한 번에 계산 (Host/Player 공용)
-function useResolve({ base, meta, players }) {
-  const tapsList = useChildList(`${base}/taps`)
-  const secret = useValue(`${base}/secret`)
-  const hits = useValue(`${base}/hits`) || 1
+// 라운드 상태 종합 (호스트/플레이어 공용)
+function useResolve({ base, players }) {
+  const pressRaw = useValue(`${base}/presses`)
+  const startedAt = useValue(`${base}/startedAt`)
+  const deadline = useValue(`${base}/deadline`)
   const live = players.filter((p) => p.connected !== false)
-  const N = secret?.n || live.length
-  const ordered = useMemo(() => order(tapsList), [tapsList])
-  const hitNums = useMemo(() => (secret?.nums ? secret.nums.split(',').map(Number) : []), [secret])
-  const pressedIds = useMemo(() => new Set(ordered.map((o) => o.pid)), [ordered])
-  const reveal = meta.roundStatus === 'reveal'
-  const caught = reveal ? ordered.filter((o) => hitNums.includes(o.k)) : []
-  const noShow = reveal ? live.filter((p) => !pressedIds.has(p.id)) : []
-  return { tapsList, secret, hits, N, ordered, hitNums, pressedIds, reveal, caught, noShow, live }
+  const liveIds = live.map((p) => p.id)
+  const running = !!startedAt
+  const now = useNow(running)
+
+  const { claimed, claimedSet, lastCollision, lastPressTs } = useMemo(
+    () => computeClaims(pressRaw, liveIds),
+    [pressRaw, liveIds.join(',')] // eslint-disable-line
+  )
+  const remaining = live.filter((p) => !claimedSet.has(p.id))
+  const N = live.length
+  const timeUp = running && deadline && now >= deadline
+  // 종료: 남은 1명 이하 → 그 1명(또는 마지막 통과자)이 패배 / 시간초과 → 미통과 전원 패배
+  let done = false
+  let losers = []
+  if (running && N >= 2) {
+    if (remaining.length <= 1) {
+      done = true
+      losers = remaining.length === 1 ? [remaining[0]] : claimed.length ? [live.find((p) => p.id === claimed[claimed.length - 1].pid)].filter(Boolean) : []
+    } else if (timeUp) {
+      done = true
+      losers = remaining
+    }
+  }
+  const loserIds = new Set(losers.map((l) => l.id))
+  return { claimed, claimedSet, remaining, lastCollision, lastPressTs, N, live, running, now, deadline, done, losers, loserIds }
 }
 
-function HostView({ base, meta, players }) {
-  const { secret, hits, N, ordered, hitNums, reveal, caught, noShow, live } = useResolve({ base, meta, players })
+function HostView({ base, players }) {
+  const st = useResolve({ base, players })
+  const limitSec = useValue(`${base}/limitSec`) || DEFAULT_LIMIT
   const nameOf = useNameOf(players)
-  const open = meta.roundStatus === 'open'
+  const idle = !st.running
 
-  // 시작하는 순간 숨은 번호를 뽑아 잠근다. 트랜잭션이라 화면이 여러 개여도 한 번만 뽑힘.
-  useEffect(() => {
-    if (!open || secret !== null || live.length < 2) return
-    dbTransaction(`${base}/secret`, (cur) => cur || draw(live.length, hits))
-  }, [open, secret, base, hits, live.length])
-
-  const idle = !open && !reveal
+  const start = () => {
+    const t = serverNow()
+    dbUpdate(base, { startedAt: t, deadline: t + limitSec * 1000, presses: null })
+  }
+  const reset = () => dbUpdate(base, { startedAt: null, deadline: null, presses: null })
+  const secsLeft = st.deadline ? Math.max(0, Math.ceil((st.deadline - st.now) / 1000)) : limitSec
 
   return (
     <div className="text-center">
-      <div className="font-display text-xl">🔢 눈치보며 딱 한 번 터치!</div>
-      <div className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>
-        누른 순서대로 번호 배정 · 숨은 번호에 걸리면 벌칙 🍺
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <Button variant="ok" onClick={start} disabled={st.N < 2}>{st.running ? '🔄 새 판' : '👀 시작'}</Button>
+        {st.running && <Button variant="ghost" onClick={reset}>■ 정지</Button>}
       </div>
 
-      {idle && (
+      {idle ? (
         <div className="mt-4">
-          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>걸리는 사람 수</div>
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>제한시간</div>
           <div className="flex justify-center gap-2">
-            {HIT_COUNTS.map((n) => (
-              <button key={n} onClick={() => dbSet(`${base}/hits`, n)} className="clay-btn px-4 py-2 font-display"
-                style={hits === n ? { background: 'var(--c-coral)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
-                {n}명
+            {LIMITS.map((s) => (
+              <button key={s} onClick={() => dbUpdate(base, { limitSec: s })} className="clay-btn px-4 py-2 font-display"
+                style={limitSec === s ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
+                {s}초
               </button>
             ))}
           </div>
-          <div className="text-xs mt-1" style={{ color: 'var(--ink-soft)' }}>
-            현재 {live.length}명 · 시작하면 1~{live.length} 중 {hits}개가 비밀로 잠깁니다
-          </div>
-          {live.length < 2 && <div className="text-xs mt-1" style={{ color: 'var(--c-coral)' }}>2명 이상 있어야 시작할 수 있어요</div>}
+          <p className="mt-4 font-display text-lg" style={{ color: 'var(--ink-soft)' }}>
+            혼자 누르면 통과 · 동시에 누르면 겹침 💥 · 마지막 1명이 꼴찌 🍺
+          </p>
+          {st.N < 2 && <p className="text-sm mt-1" style={{ color: 'var(--c-coral)' }}>2명 이상 필요 (3명+ 권장)</p>}
         </div>
-      )}
-
-      {open && (
+      ) : (
         <>
-          <div className="mt-4 font-display text-2xl" style={{ color: 'var(--c-grape)' }}>🔒 숨은 번호 {hits}개 · 잠김</div>
-          <div className="mt-1" style={{ color: 'var(--ink-soft)' }}>
-            누른 사람 <span className="font-display text-3xl" style={{ color: 'var(--ink)' }}>{ordered.length}</span> / {N}
+          <div className="mt-3 flex items-center justify-center gap-4">
+            <div className="font-display tabular-nums" style={{ fontSize: '3.5rem', lineHeight: 1, color: secsLeft <= 5 ? 'var(--c-coral)' : 'var(--ink)' }}>{secsLeft}<span className="text-2xl">초</span></div>
+            <div className="text-left" style={{ color: 'var(--ink-soft)' }}>
+              통과 <span className="font-display text-2xl" style={{ color: 'var(--ink)' }}>{st.claimed.length}</span> / {st.N}
+              <div className="text-sm">남은 사람 {st.remaining.length}명</div>
+            </div>
           </div>
+
+          {/* 통과 순서 */}
+          <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
+            {st.claimed.map((c, i) => (
+              <span key={c.pid} className="clay-inset px-3 py-1.5 font-bold animate-pop">{i + 1}. {nameOf(c.pid)}</span>
+            ))}
+            {!st.claimed.length && <p className="py-4" style={{ color: 'var(--ink-soft)' }}>아직 아무도 통과 못 했어요 🤫</p>}
+          </div>
+
+          {/* 최근 겹침 */}
+          {st.lastCollision && !st.done && (
+            <div className="mt-3 clay p-2 max-w-md mx-auto animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+              💥 {st.lastCollision.pids.map((p) => nameOf(p)).join(' · ')} 동시에 눌러서 무효 · 다시!
+            </div>
+          )}
+
+          {/* 결과 */}
+          {st.done && (
+            <div className="mt-4 clay p-4 animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+              <div className="font-display text-3xl">😱 꼴찌 · 벌칙 🍺</div>
+              <div className="font-display text-2xl mt-1">{st.losers.map((l) => l.nickname).join(', ') || '—'}</div>
+              {st.deadline && st.now >= st.deadline && st.losers.length > 1 && <div className="text-sm mt-1 opacity-90">시간 초과!</div>}
+            </div>
+          )}
         </>
-      )}
-
-      {reveal && (
-        <div className="mt-4">
-          <div style={{ color: 'var(--ink-soft)' }}>숨은 번호</div>
-          <div className="font-display text-6xl animate-pop" style={{ color: 'var(--c-coral)' }}>{hitNums.join('  ·  ') || '—'}</div>
-        </div>
-      )}
-
-      {/* 누른 순서 — 공개되면 걸린 번호가 빨갛게 */}
-      <div className="mt-4 flex flex-wrap justify-center gap-2 max-w-2xl mx-auto">
-        {ordered.map((o) => {
-          const hit = reveal && hitNums.includes(o.k)
-          return (
-            <span key={o.id} className={`clay-inset px-3 py-1.5 font-bold ${hit ? 'animate-pop' : ''}`}
-              style={hit ? { background: 'var(--c-coral)', color: '#fff' } : undefined}>
-              {hit && '💥 '}{o.k}. {nameOf(o.pid)}
-            </span>
-          )
-        })}
-        {!ordered.length && <p className="py-6" style={{ color: 'var(--ink-soft)' }}>아직 아무도 안 눌렀어요. 🤫</p>}
-      </div>
-
-      {reveal && (
-        <div className="mt-5 grid gap-3 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
-          <div className="clay p-3" style={{ background: 'var(--c-coral)', color: '#fff' }}>
-            <div className="font-display text-lg">💥 걸린 사람 · {caught.length}명</div>
-            <div className="text-sm mt-1 opacity-90">{caught.map((c) => `${c.k}. ${nameOf(c.pid)}`).join(', ') || '아무도 안 걸렸어요 (그 번호는 빈 자리)'}</div>
-          </div>
-          <div className="clay p-3" style={{ background: 'var(--c-grape)', color: '#fff' }}>
-            <div className="font-display text-lg">🙈 끝까지 안 누른 사람 · {noShow.length}명</div>
-            <div className="text-sm mt-1 opacity-90">{noShow.map((p) => p.nickname).join(', ') || '전원 참여!'}</div>
-          </div>
-        </div>
       )}
     </div>
   )
 }
 
-function PlayerView({ base, meta, players, me }) {
-  const { N, ordered, hitNums, hits, reveal, secret } = useResolve({ base, meta, players })
-  const open = meta.roundStatus === 'open'
-  const mine = ordered.find((o) => o.pid === me.id)
-  const pressed = !!mine
-  const active = open && !pressed && !!secret
-  const hit = reveal && mine && hitNums.includes(mine.k)
-  const noShow = reveal && !pressed
+function PlayerView({ base, players, me }) {
+  const st = useResolve({ base, players })
+  const nameOf = useNameOf(players)
+  const myClaim = st.claimed.findIndex((c) => c.pid === me.id)
+  const claimed = myClaim >= 0
+  const iLost = st.loserIds.has(me.id)
+  const myLastPress = st.lastPressTs[me.id]
+  const cooldownLeft = myLastPress ? Math.max(0, COOLDOWN - (st.now - myLastPress)) : 0
+  const onCooldown = cooldownLeft > 0
+  const inCollision = st.lastCollision && st.lastCollision.pids.includes(me.id) && !claimed
+  const active = st.running && !st.done && !claimed && !onCooldown && st.now < (st.deadline || Infinity)
 
   const press = () => {
     if (!active) return
-    dbPush(`${base}/taps`, { pid: me.id, ts: SERVER_TS })
-    if (navigator.vibrate) navigator.vibrate(40)
+    dbPush(`${base}/presses`, { pid: me.id, ts: serverNow() })
+    if (navigator.vibrate) navigator.vibrate(30)
   }
 
   let label = '대기'
-  if (hit) label = '💥 걸렸다!'
-  else if (noShow) label = '🙈 미참여'
-  else if (reveal && pressed) label = `${mine.k}번 · 안전 ✅`
-  else if (pressed) label = `내 번호 ${mine.k}`
-  else if (active) label = '🫣 지금 누르기'
+  let bg = 'var(--surface-2)'
+  let fg = 'var(--ink-soft)'
+  if (!st.running) { label = '대기'; }
+  else if (iLost) { label = '😱 꼴찌!'; bg = 'var(--c-coral)'; fg = '#fff' }
+  else if (st.done) { label = '✅ 안전'; bg = 'var(--c-mint)'; fg = '#fff' }
+  else if (claimed) { label = `✅ ${myClaim + 1}번째 통과`; bg = 'var(--c-mint)'; fg = '#fff' }
+  else if (onCooldown) { label = `${(cooldownLeft / 1000).toFixed(1)}초 대기`; bg = inCollision ? 'var(--c-coral)' : 'var(--surface-2)'; fg = inCollision ? '#fff' : 'var(--ink-soft)' }
+  else if (active) { label = '👀 지금?'; bg = 'var(--c-grape)'; fg = '#fff' }
 
-  const bg = hit || noShow ? 'var(--c-coral)' : reveal && pressed ? 'var(--c-mint)' : active ? 'var(--c-grape)' : pressed ? 'var(--c-mint)' : 'var(--surface-2)'
-  const fg = hit || noShow || active || pressed ? '#fff' : 'var(--ink-soft)'
+  const secsLeft = st.deadline ? Math.max(0, Math.ceil((st.deadline - st.now) / 1000)) : 0
 
   return (
     <div className="text-center">
       <div style={{ color: 'var(--ink-soft)' }}>
-        {reveal ? `숨은 번호 ${hitNums.join(', ')}` : open ? `${ordered.length} / ${N}명이 눌렀어요` : '진행자 대기 중'}
+        {!st.running ? '진행자 대기 중' : st.done ? '판 종료' : `통과 ${st.claimed.length}/${st.N} · ⏱ ${secsLeft}초`}
       </div>
       <button onPointerDown={press} disabled={!active}
         className="mt-3 w-full h-72 rounded-3xl font-display text-4xl clay-btn transition-colors"
         style={{ background: bg, color: fg }}>
         {label}
       </button>
-      {hit ? (
-        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>💥 {mine.k}번이 숨은 번호였어요! 벌칙 🍺</p>
-      ) : noShow ? (
-        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>끝까지 안 눌렀네요… 미참여 벌칙 🍺</p>
-      ) : reveal ? (
-        <p className="mt-3 text-sm" style={{ color: 'var(--c-mint)' }}>살았다! 🎉</p>
-      ) : pressed ? (
-        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>{mine.k}번 확정 · 공개까지 기도하세요 🙏</p>
+      {iLost ? (
+        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>마지막까지 못 통과했어요 · 벌칙 🍺</p>
+      ) : claimed ? (
+        <p className="mt-3 font-display" style={{ color: 'var(--c-mint)' }}>{myClaim + 1}번째로 통과 · 안전 ✅</p>
+      ) : inCollision && onCooldown ? (
+        <p className="mt-3 font-display" style={{ color: 'var(--c-coral)' }}>💥 동시에 눌렀어요! 잠시 후 다시</p>
+      ) : onCooldown ? (
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>쿨다운 중… 조금만 참아요</p>
+      ) : active ? (
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>아무도 안 누를 것 같은 순간에! 겹치면 무효 🫣</p>
       ) : (
-        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>1~{N}번 중 {hits}개가 걸립니다 · 몇 번째로 들어갈지는 당신 몫 🫣</p>
+        <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>혼자 누르면 통과 · 마지막 1명이 꼴찌</p>
       )}
     </div>
   )
@@ -188,11 +233,11 @@ function PlayerView({ base, meta, players, me }) {
 export default {
   id: 'eunchi',
   name: '눈치게임',
-  emoji: '🔢',
-  tagline: '숨은 번호 · 몇 번째로 누를까',
-  genres: ['mind'],
+  emoji: '👀',
+  tagline: '동시에 누르면 겹침 · 마지막이 꼴찌',
+  genres: ['physical', 'mind'],
   traits: ['solo'],
-  controls: { prompt: false, startLabel: '▶ 시작', resetLabel: '🔄 새 게임' },
+  controls: { prompt: false, mode: 'self' },
   HostView,
   PlayerView,
 }

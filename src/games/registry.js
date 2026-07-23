@@ -27,17 +27,15 @@ import uniquenum from './uniquenum.jsx'
 import telematch from './telematch.jsx'
 import greenlight from './greenlight.jsx'
 import themind from './themind.jsx'
-import quiz from './quiz.jsx'
 import croc from './croc.jsx'
 import imagegame from './imagegame.jsx'
 import justone from './justone.jsx'
 import indianpoker from './indianpoker.jsx'
-import bombword from './bombword.jsx'
 import ranksync from './ranksync.jsx'
 import codenames from './codenames.jsx'
 import werewolf from './werewolf.jsx'
 
-export const GAMES = [buzzer, tap, timing, chicken, greenlight, pick, herd, eunchi, uniquenum, indianpoker, spy, sync, telematch, ranksync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, codenames, whodunit, wavelength, mission, oxtruth, mbti, heartsignal, themind, bombword, quiz, croc, imagegame, justone, werewolf]
+export const GAMES = [buzzer, tap, timing, chicken, greenlight, pick, herd, eunchi, uniquenum, indianpoker, spy, sync, telematch, ranksync, rolling, jinseonmi, faces, charades, wordrelay, category, roulette, king, codenames, whodunit, wavelength, mission, oxtruth, mbti, heartsignal, themind, croc, imagegame, justone, werewolf]
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 

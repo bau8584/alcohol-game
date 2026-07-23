@@ -1,9 +1,9 @@
-// 양세찬 게임 (파드 스피드) — 2~3명 파드로 나눠 동시 진행.
-// 각 파드에서 '핫시트' 1명은 자기 이마 단어를 못 봄 → 나머지 팀원이 힌트(이름·단어 직접 말 금지) →
-// 핫시트가 '맞혔다!' → 먼저 맞힌 파드 순위. 단어는 프리셋 은행 또는 팀원이 직접 써주기.
-// 핫시트는 '다음 라운드'로 교대. (mode:'self' — 게임이 phase를 직접 관리)
+// 양세찬 게임 (팀전) — 팀마다 이마 단어 1개.
+// 자기 팀 단어는 우리 팀만 못 봄(❓), 다른 팀은 다 보임 → 다른 팀에게 예/아니오 물어 우리 팀 단어 맞히기.
+// 단어는 프리셋 랜덤 or '상대팀이 써주기'. 진행자가 맞힌 팀을 ✅ 체크 → 먼저 맞힌 순으로 순위.
+// (mode:'self' — 게임이 phase를 직접 관리)
 import { useMemo, useState } from 'react'
-import { useValue, dbSet, dbUpdate, dbTransaction } from '../lib/db'
+import { useValue, dbSet, dbUpdate, dbTransaction, dbRemove } from '../lib/db'
 import { Button } from '../components/ui'
 
 const shuffle = (arr) => {
@@ -40,78 +40,76 @@ const CATEGORIES = [
 const catLabel = (k) => CATEGORIES.find((c) => c.key === k)?.label || k
 const bankFor = (cat) => (cat === 'adult' ? ADULT_BANK : cat === 'free' ? FREE_ALL : BANKS[cat] || FREE_ALL)
 
-// 접속자 → 2~3명 파드로 (마지막 1명 파드는 앞에 합침)
-function formPods(ids, size) {
-  const s = shuffle(ids)
-  const pods = []
-  for (let i = 0; i < s.length; i += size) pods.push(s.slice(i, i + size))
-  if (pods.length > 1 && pods[pods.length - 1].length === 1) {
-    const last = pods.pop()
-    pods[pods.length - 1].push(...last)
-  }
-  return pods
+// 멤버(접속자)가 있는 팀만 · order 기준 안정 정렬
+const activeTeams = (teams, players) => {
+  const has = {}
+  players.filter((p) => p.connected !== false && p.teamId).forEach((p) => { has[p.teamId] = true })
+  return [...teams].filter((t) => has[t.id]).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 }
-const hotSeatOf = (pod, round) => pod[round % pod.length]
-// 프리셋 단어 배정: 각 파드 핫시트에게 서로 다른 단어
-function assignPreset(pods, round, bank) {
+// 프리셋: 각 팀에 서로 다른 단어
+const assignPreset = (teamIds, bank) => {
   const deck = shuffle(bank)
-  const word = {}
-  pods.forEach((pod, i) => { word[hotSeatOf(pod, round)] = deck[i % deck.length] })
-  return word
+  const w = {}
+  teamIds.forEach((tid, i) => { w[tid] = deck[i % deck.length] })
+  return w
 }
 
 /* ═══════════════ 호스트 ═══════════════ */
-function HostView({ base, meta, players }) {
+function HostView({ base, meta, players, teams }) {
   const cfg = useValue(`${base}/cfg`)
-  const podsRaw = useValue(`${base}/pods`)
-  const round = useValue(`${base}/round`) || 0
-  const word = useValue(`${base}/word`) || {}
+  const ring = useValue(`${base}/ring`) // [teamId...] 배정 순서(상대팀 써주기 타깃 계산용)
+  const tword = useValue(`${base}/tword`) || {}
   const done = useValue(`${base}/done`) || {}
   const phase = useValue(`${base}/phase`) || 'setup'
-  const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
-  const nameOf = (id) => byId[id]?.nickname || '?'
-  const pods = podsRaw || []
 
-  // 로컬 셋업 초안
+  const teamById = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t])), [teams])
+  const tName = (id) => teamById[id]?.name || '?'
+
+  // 진행자가 참가자이기도 하면(폰 1대) 자기 팀 단어는 숨겨서 진행자도 참여 가능하게.
+  const hostP = meta?.hostPlayerId ? players.find((p) => p.id === meta.hostPlayerId) : null
+  const hostTeamId = hostP?.teamId
+
   const [source, setSource] = useState('preset')
   const [category, setCategory] = useState('star')
-  const [podSize, setPodSize] = useState(2)
 
-  const connected = players.filter((p) => p.connected !== false)
+  const live = activeTeams(teams, players)
   const start = () => {
-    if (connected.length < 2) return alert('최소 2명 필요.')
-    const pods = formPods(connected.map((p) => p.id), podSize)
-    const c = { source, category, podSize }
+    if (live.length < 2) return alert('멤버가 있는 팀이 2팀 이상 필요해요.')
+    const ids = live.map((t) => t.id)
     const preset = source === 'preset'
     dbSet(base, {
-      cfg: c, pods, round: 0, done: null,
-      word: preset ? assignPreset(pods, 0, bankFor(category)) : null,
-      phase: preset ? 'race' : 'write',
+      cfg: { source, category },
+      ring: ids,
+      tword: preset ? assignPreset(ids, bankFor(category)) : null,
+      done: null,
+      phase: preset ? 'play' : 'write',
     })
   }
-  const nextRound = () => {
-    const r = round + 1
+  const rematch = () => {
+    const ids = ring || live.map((t) => t.id)
     const preset = cfg?.source === 'preset'
     dbUpdate(base, {
-      round: r, done: null,
-      word: preset ? assignPreset(pods, r, bankFor(cfg.category)) : null,
-      phase: preset ? 'race' : 'write',
+      tword: preset ? assignPreset(ids, bankFor(cfg.category)) : null,
+      done: null,
+      phase: preset ? 'play' : 'write',
     })
   }
-  const writtenCount = pods.filter((pod) => word[hotSeatOf(pod, round)]).length
+
+  const ids = ring || live.map((t) => t.id)
+  const writtenCount = ids.filter((id) => tword[id]).length
   const doneCount = Object.keys(done).length
 
   // ── 셋업 ──
-  if (phase === 'setup' || !pods.length) {
+  if (phase === 'setup' || !ring) {
     return (
       <div className="text-center">
-        <p className="font-display text-lg">🃏 양세찬 게임 (파드 스피드)</p>
+        <p className="font-display text-lg">🃏 양세찬 게임 (팀전)</p>
         <p className="text-sm mt-1 max-w-md mx-auto" style={{ color: 'var(--ink-soft)' }}>
-          2~3명 파드로 나눠 동시에! 핫시트는 자기 단어를 못 보고, 팀원 힌트로 맞혀요. <b>먼저 맞힌 파드 승!</b>
+          팀마다 이마 단어 1개! <b>우리 팀 단어는 우리만 못 보고</b>, 다른 팀에게 예/아니오 물어 맞혀요.
         </p>
 
         <div className="mt-4 flex justify-center gap-2">
-          {[['preset', '📋 프리셋 단어'], ['write', '✍️ 직접 써주기']].map(([k, l]) => (
+          {[['preset', '📋 프리셋 단어'], ['write', '✍️ 상대팀이 써주기']].map(([k, l]) => (
             <button key={k} onClick={() => setSource(k)} className="clay-btn px-4 py-2 font-display" style={source === k ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{l}</button>
           ))}
         </div>
@@ -123,66 +121,66 @@ function HostView({ base, meta, players }) {
               <button key={c.key} onClick={() => setCategory(c.key)} className="clay-btn px-3 py-1.5 text-sm" style={category === c.key ? { background: c.adult ? '#e64545' : 'var(--c-sky)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{c.label}</button>
             ))}
           </div>
-          <p className="text-xs mt-1" style={{ color: 'var(--ink-soft)' }}>{source === 'write' ? '직접 써주기 모드: 주제는 작성 가이드로만 쓰여요' : ''}</p>
+          {source === 'write' && <p className="text-xs mt-1" style={{ color: 'var(--ink-soft)' }}>상대팀이 써주기 모드: 주제는 작성 가이드로만 쓰여요</p>}
         </div>
 
-        <div className="mt-3 flex items-center justify-center gap-2">
-          <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>파드 크기</span>
-          {[2, 3].map((s) => (
-            <button key={s} onClick={() => setPodSize(s)} className="clay-btn px-4 py-1.5 font-display" style={podSize === s ? { background: 'var(--c-mint)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{s}명</button>
-          ))}
-          <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>· 접속 {connected.length}명</span>
+        <div className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>
+          참여 팀 {live.length}팀: {live.map((t) => t.name).join(' · ') || '없음'}
         </div>
-
-        <Button className="mt-4 text-xl px-8 py-3" onClick={start} disabled={connected.length < 2}>🚀 파드 짜고 시작</Button>
+        <Button className="mt-4 text-xl px-8 py-3" onClick={start} disabled={live.length < 2}>🚀 단어 배정하고 시작</Button>
       </div>
     )
   }
 
-  // ── 공통: 파드 보드 ──
+  // ── 팀 보드 (호스트는 모든 단어 보임 + 맞힘 체크) ──
   const board = (
-    <div className="mt-4 grid gap-2 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-      {pods.map((pod, i) => {
-        const hs = hotSeatOf(pod, round)
-        const order = done[i]
+    <div className="mt-4 grid gap-2 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+      {ids.map((id) => {
+        const order = done[id]
         const medal = order === 1 ? '🥇' : order === 2 ? '🥈' : order === 3 ? '🥉' : order ? `${order}등` : null
+        const t = teamById[id]
+        // 진행자 본인 팀 단어는 진행 중엔 숨김(진행자도 참여) · 결과 땐 공개
+        const hideWord = hostTeamId && id === hostTeamId && phase !== 'result'
         return (
-          <div key={i} className="clay-inset p-2 text-left text-sm" style={order === 1 ? { outline: '2px solid var(--c-mint)' } : {}}>
+          <div key={id} className="clay-inset p-3 text-left" style={order === 1 ? { outline: '2px solid var(--c-mint)' } : {}}>
             <div className="flex justify-between items-center">
-              <span className="font-display">파드 {i + 1}</span>
-              {medal ? <span className="font-display">{medal}</span> : <span style={{ color: 'var(--ink-soft)' }}>{phase === 'race' ? '진행 중…' : ''}</span>}
+              <span className="font-display" style={{ color: t?.color }}>{tName(id)}{hideWord ? ' (내 팀)' : ''}</span>
+              {medal && <span className="font-display">{medal}</span>}
             </div>
-            <div className="mt-1">
-              🎯 <b>{nameOf(hs)}</b> <span style={{ color: 'var(--ink-soft)' }}>(핫시트)</span>
-              {phase !== 'race' || order ? <span className="ml-1 font-display" style={{ color: 'var(--c-coral)' }}>{word[hs] || (phase === 'write' ? '작성 대기' : '')}</span> : null}
-            </div>
-            <div style={{ color: 'var(--ink-soft)' }}>힌트: {pod.filter((p) => p !== hs).map(nameOf).join(', ') || '—'}</div>
+            <div className="mt-1 font-display text-xl" style={{ color: 'var(--c-coral)' }}>{hideWord ? '❓ (내 팀 · 숨김)' : (tword[id] || (phase === 'write' ? '작성 대기…' : '—'))}</div>
+            {phase === 'play' && (
+              order ? (
+                <button onClick={() => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; delete cur[id]; return cur })} className="mt-2 text-xs underline" style={{ color: 'var(--ink-soft)' }}>맞힘 취소 ↩</button>
+              ) : (
+                <button onClick={() => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; if (cur[id] != null) return; cur[id] = Object.keys(cur).length + 1; return cur })} className="clay-btn mt-2 w-full py-1.5 text-sm font-display" style={{ background: 'var(--c-mint)', color: '#fff' }}>✅ 맞힘</button>
+              )
+            )}
           </div>
         )
       })}
     </div>
   )
 
-  // ── 작성 대기 ──
+  // ── 작성 대기 (상대팀이 써주기) ──
   if (phase === 'write') {
     return (
       <div className="text-center">
-        <p className="font-display text-lg">✍️ 팀원이 핫시트 단어 작성 중… ({writtenCount}/{pods.length})</p>
-        <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>주제: {catLabel(cfg?.category)} · 각 파드에서 핫시트 빼고 아무나 써주면 돼요</p>
+        <p className="font-display text-lg">✍️ 상대팀이 단어 써주는 중… ({writtenCount}/{ids.length})</p>
+        <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>주제: {catLabel(cfg?.category)} · 각 팀은 지정된 상대팀 단어를 정해줘요</p>
         {board}
-        <Button className="mt-4" onClick={() => dbUpdate(base, { phase: 'race' })} disabled={writtenCount < pods.length}>
-          {writtenCount < pods.length ? `아직 ${pods.length - writtenCount}파드 남음` : '▶ 레이스 시작!'}
+        <Button className="mt-4" onClick={() => dbUpdate(base, { phase: 'play' })} disabled={writtenCount < ids.length}>
+          {writtenCount < ids.length ? `아직 ${ids.length - writtenCount}팀 남음` : '▶ 시작!'}
         </Button>
       </div>
     )
   }
 
-  // ── 레이스 ──
-  if (phase === 'race') {
+  // ── 진행 ──
+  if (phase === 'play') {
     return (
       <div className="text-center">
-        <p className="font-display text-xl">🏁 레이스! 먼저 맞힌 파드 승</p>
-        <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>맞힌 파드 {doneCount}/{pods.length} · 팀원은 힌트, 핫시트는 맞히고 ‘맞혔다!’</p>
+        <p className="font-display text-xl">🏁 우리 팀 단어를 맞혀라!</p>
+        <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>맞힌 팀 {doneCount}/{ids.length} · 맞히면 ✅ 눌러 순위 기록</p>
         {board}
         <div className="mt-4 flex justify-center gap-2">
           <Button variant="warn" onClick={() => dbUpdate(base, { phase: 'result' })}>🏁 결과 보기</Button>
@@ -192,100 +190,120 @@ function HostView({ base, meta, players }) {
   }
 
   // ── 결과 ──
-  const ranking = pods.map((pod, i) => ({ i, order: done[i] || 999, hs: hotSeatOf(pod, round) })).sort((a, b) => a.order - b.order)
+  const ranking = ids.map((id) => ({ id, order: done[id] || 999 })).sort((a, b) => a.order - b.order)
   const winner = ranking.find((r) => r.order === 1)
   return (
     <div className="text-center">
       <p className="font-display text-2xl">🏆 결과</p>
-      {winner ? <p className="mt-1 font-display text-xl" style={{ color: 'var(--c-mint)' }}>🥇 파드 {winner.i + 1} ({nameOf(winner.hs)}) 승리!</p> : <p className="mt-1" style={{ color: 'var(--ink-soft)' }}>아무도 못 맞혔어요 🥲</p>}
+      {winner ? <p className="mt-1 font-display text-xl" style={{ color: teamById[winner.id]?.color || 'var(--c-mint)' }}>🥇 {tName(winner.id)} 승리!</p> : <p className="mt-1" style={{ color: 'var(--ink-soft)' }}>아무 팀도 못 맞혔어요 🥲</p>}
       {board}
       <div className="mt-4 flex justify-center gap-2">
-        <Button variant="primary" onClick={nextRound}>🔄 다음 라운드 (핫시트 교대)</Button>
-        <Button variant="ghost" onClick={() => dbSet(base, null)}>↩ 새 게임(파드 다시)</Button>
+        <Button variant="primary" onClick={rematch}>🔄 다시 (단어 재배정)</Button>
+        <Button variant="ghost" onClick={() => dbSet(base, null)}>↩ 새 게임</Button>
       </div>
     </div>
   )
 }
 
 /* ═══════════════ 참가자 ═══════════════ */
-function PlayerView({ base, players, me }) {
-  const podsRaw = useValue(`${base}/pods`)
-  const round = useValue(`${base}/round`) || 0
-  const word = useValue(`${base}/word`) || {}
+function PlayerView({ base, players, teams, me, myTeam }) {
+  const cfg = useValue(`${base}/cfg`)
+  const ring = useValue(`${base}/ring`)
+  const tword = useValue(`${base}/tword`) || {}
   const done = useValue(`${base}/done`) || {}
   const phase = useValue(`${base}/phase`) || 'setup'
-  const cfg = useValue(`${base}/cfg`)
-  const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
-  const nameOf = (id) => byId[id]?.nickname || '?'
   const [text, setText] = useState('')
-  const pods = podsRaw || []
 
-  const podIdx = pods.findIndex((pod) => pod.includes(me.id))
-  const pod = podIdx >= 0 ? pods[podIdx] : null
+  const teamById = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t])), [teams])
+  const tName = (id) => teamById[id]?.name || '?'
+  const myTeamId = myTeam?.id || me.teamId
+  const ids = Array.isArray(ring) ? ring : []
 
-  if (!pod) {
-    return <div className="text-center py-12"><div className="text-5xl">🃏</div><p className="mt-3 font-display text-xl">{phase === 'setup' ? '진행자가 파드를 짜는 중…' : '이번 판은 미참여 · 다음 게임에 참여돼요'}</p></div>
+  if (phase === 'setup' || !ids.length) {
+    return <div className="text-center py-12"><div className="text-5xl">🃏</div><p className="mt-3 font-display text-xl">진행자가 단어를 배정 중…</p></div>
+  }
+  if (!ids.includes(myTeamId)) {
+    return <div className="text-center py-12"><div className="text-5xl">🃏</div><p className="mt-3 font-display text-xl">이번 판은 미참여</p><p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>팀에 들어가면 참여돼요</p></div>
   }
 
-  const hotSeat = hotSeatOf(pod, round)
-  const amHot = hotSeat === me.id
-  const myWord = word[hotSeat]
-  const myOrder = done[podIdx]
-  const mates = pod.filter((p) => p !== me.id).map(nameOf)
+  const myIdx = ids.indexOf(myTeamId)
+  const targetId = ids[(myIdx + 1) % ids.length] // 우리 팀이 단어를 써줄 상대팀 (ring 다음 팀)
+  const myOrder = done[myTeamId]
+  const others = ids.filter((id) => id !== myTeamId) // 내가 볼 수 있는(내가 아는) 다른 팀 단어들
 
-  // 작성 단계 — 팀원이 핫시트 단어 써주기
+  // ── 작성 단계: 우리 팀이 targetId 팀의 단어를 정해줌 ──
   if (phase === 'write') {
-    if (amHot) {
-      return <div className="text-center py-12"><div className="text-5xl">🙈</div><p className="mt-3 font-display text-xl">팀원이 네 단어를 정하는 중…</p><p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>넌 못 봐! 조용히 기다려요</p></div>
+    const targetWord = tword[targetId]
+    if (targetWord) {
+      return <div className="text-center py-12"><div className="text-5xl">✅</div><p className="mt-3 font-display text-xl">{tName(targetId)} 단어 완료!</p><p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>다른 팀 작성을 기다려요</p></div>
     }
-    if (myWord) {
-      return <div className="text-center py-12"><div className="text-5xl">✅</div><p className="mt-3 font-display text-xl">{nameOf(hotSeat)}의 단어 완료!</p><p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>레이스 시작을 기다려요</p></div>
-    }
-    const submit = () => text.trim() && dbSet(`${base}/word/${hotSeat}`, text.trim())
+    const submit = () => text.trim() && dbSet(`${base}/tword/${targetId}`, text.trim())
     return (
       <div className="text-center">
-        <p className="font-bold" style={{ color: 'var(--c-grape)' }}>✍️ {nameOf(hotSeat)}의 이마 단어를 써주세요</p>
-        <p className="text-sm mt-1 mb-3" style={{ color: 'var(--ink-soft)' }}>주제: {catLabel(cfg?.category)} · 본인 못 보게!</p>
-        <input value={text} onChange={(e) => setText(e.target.value)} className="w-full clay-inset px-4 py-4 text-xl text-center" placeholder={`${nameOf(hotSeat)}에게 줄 단어`} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        <p className="font-bold" style={{ color: 'var(--c-grape)' }}>✍️ 상대팀 <b style={{ color: teamById[targetId]?.color }}>{tName(targetId)}</b>의 이마 단어를 정해주세요</p>
+        <p className="text-sm mt-1 mb-3" style={{ color: 'var(--ink-soft)' }}>주제: {catLabel(cfg?.category)} · 우리 팀끼리 상의해서 하나!</p>
+        <input value={text} onChange={(e) => setText(e.target.value)} className="w-full clay-inset px-4 py-4 text-xl text-center" placeholder={`${tName(targetId)}에게 줄 단어`} onKeyDown={(e) => e.key === 'Enter' && submit()} />
         <Button className="mt-3 w-full" onClick={submit} disabled={!text.trim()}>제출</Button>
       </div>
     )
   }
 
-  // 레이스/결과 — 이미 맞힘
-  if (myOrder) {
-    const medal = myOrder === 1 ? '🥇 1등!' : `${myOrder}등`
-    return <div className="text-center py-10 clay" style={{ background: myOrder === 1 ? 'var(--c-mint)' : 'var(--surface)', color: myOrder === 1 ? '#fff' : 'var(--ink)' }}><div className="text-5xl">{myOrder === 1 ? '🥇' : '✅'}</div><p className="mt-2 font-display text-2xl">우리 파드 {medal}</p><p className="mt-1 text-sm opacity-90">정답: {myWord}</p></div>
-  }
-
-  // 핫시트 — 못 보고 맞히기
-  if (amHot) {
-    if (phase === 'result') {
-      return <div className="text-center py-10"><div className="text-5xl">🙈</div><p className="mt-2 font-display text-xl">못 맞혔어요… 정답: {myWord}</p></div>
-    }
-    const gotIt = () => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; if (cur[podIdx] != null) return; cur[podIdx] = Object.keys(cur).length + 1; return cur })
+  // ── 결과: 전체 팀 순위(게임 종료 → 전부 공개 안전) ──
+  if (phase === 'result') {
+    const ranking = ids.map((id) => ({ id, order: done[id] || 999 })).sort((a, b) => a.order - b.order)
     return (
       <div className="text-center">
-        <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>힌트 주는 팀원: {mates.join(', ')}</p>
-        <div className="clay p-6 mt-2" style={{ background: 'var(--surface-2)' }}>
-          <div className="font-display text-5xl">❓</div>
-          <p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>내 이마 단어는 비밀! 팀원 힌트 듣고 맞혀봐</p>
+        <p className="font-display text-2xl mb-1">🏆 결과</p>
+        {myOrder && <p className="text-sm mb-2" style={{ color: myOrder === 1 ? 'var(--c-mint)' : 'var(--ink-soft)' }}>우리 팀 {myOrder === 1 ? '🥇 1등!' : `${myOrder}등`}</p>}
+        <div className="max-w-md mx-auto space-y-1.5 text-left">
+          {ranking.map((r, i) => {
+            const t = teamById[r.id]
+            const medal = r.order === 1 ? '🥇' : r.order === 2 ? '🥈' : r.order === 3 ? '🥉' : r.order === 999 ? '—' : `${r.order}등`
+            return (
+              <div key={r.id} className="clay-inset px-3 py-2 flex items-center gap-2" style={r.id === myTeamId ? { outline: '2px solid var(--c-mint)' } : {}}>
+                <span className="font-display w-7 shrink-0">{medal}</span>
+                <span className="flex-1 font-bold" style={{ color: t?.color }}>{tName(r.id)}{r.id === myTeamId ? ' (우리)' : ''}</span>
+                <span className="font-display" style={{ color: 'var(--c-coral)' }}>{tword[r.id] || '—'}</span>
+              </div>
+            )
+          })}
         </div>
-        <Button className="mt-4 w-full text-2xl py-4" style={{ background: 'var(--c-mint)', color: '#fff' }} onClick={gotIt}>✅ 맞혔다!</Button>
-        <p className="mt-2 text-xs" style={{ color: 'var(--ink-soft)' }}>정답을 외치고 이 버튼을 누르면 우리 파드 기록!</p>
       </div>
     )
   }
 
-  // 힌트 주는 팀원 — 핫시트 단어 보임
+  // ── 우리 팀이 맞힘 ──
+  if (myOrder) {
+    const medal = myOrder === 1 ? '🥇 1등!' : `${myOrder}등`
+    return (
+      <div className="text-center py-10 clay" style={{ background: myOrder === 1 ? 'var(--c-mint)' : 'var(--surface)', color: myOrder === 1 ? '#fff' : 'var(--ink)' }}>
+        <div className="text-5xl">{myOrder === 1 ? '🥇' : '✅'}</div>
+        <p className="mt-2 font-display text-2xl">우리 팀 {medal}</p>
+        <p className="mt-1 text-sm opacity-90">정답: {tword[myTeamId]}</p>
+      </div>
+    )
+  }
+
+  // ── 진행: 우리 팀 단어는 ❓ · 다른 팀 단어는 다 보임(맞히는 데 도와줄 정보) ──
   return (
     <div className="text-center">
-      <div className="clay p-5 mt-2" style={{ background: 'var(--c-coral)', color: '#fff' }}>
-        <div className="opacity-90">🎯 {nameOf(hotSeat)}에게 힌트!</div>
-        <div className="font-display text-4xl mt-1">{myWord || '…'}</div>
-        <div className="mt-2 text-sm opacity-90"><b>이름·단어 직접 말 금지</b> 🤐 · 설명으로 맞히게!</div>
+      <div className="clay p-6" style={{ background: 'var(--surface-2)' }}>
+        <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>우리 팀 이마 단어</div>
+        <div className="font-display text-5xl mt-1">❓</div>
+        <p className="text-sm mt-2" style={{ color: 'var(--ink-soft)' }}>다른 팀에게 예/아니오 물어서 맞혀봐! (우리 팀 단어는 아무도 안 알려줌)</p>
       </div>
-      <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>우리 파드({podIdx + 1})가 먼저 맞히면 승! 🏁</p>
+
+      <div className="mt-4 text-left max-w-md mx-auto">
+        <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>🙊 다른 팀 단어 (나만 아는 정보 · 티내지 마세요)</div>
+        <div className="space-y-1.5">
+          {others.map((id) => (
+            <div key={id} className="clay-inset px-3 py-2 flex items-center justify-between">
+              <span className="font-bold" style={{ color: teamById[id]?.color }}>{tName(id)}</span>
+              <span className="font-display" style={{ color: done[id] ? 'var(--ink-soft)' : 'var(--ink)' }}>{done[id] ? '맞힘 ✅' : tword[id] || '…'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -294,10 +312,11 @@ export default {
   id: 'callmyname',
   name: '양세찬 게임',
   emoji: '🃏',
-  tagline: '파드 스피드 · 팀원 힌트로 먼저 맞히기',
+  tagline: '팀전 · 팀마다 이마 단어 1개 · 다른 팀에게 물어 맞히기',
   genres: ['party', 'brain'],
   traits: ['team'],
   controls: { mode: 'self' },
+  shareResult: false, // HostView에 비밀 단어가 있어 참가자 공유 화면(SharedResult) 비활성
   HostView,
   PlayerView,
 }

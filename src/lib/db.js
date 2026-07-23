@@ -37,11 +37,19 @@ export const dbPush = (path, value) => push(ref(db, path), value)
 export const dbGet = async (path) => (await get(ref(db, path))).val()
 export const dbTransaction = (path, fn) => runTransaction(ref(db, path), fn)
 
-// 연결 끊김 감지: 값을 즉시 쓰고, 끊기면 onDisconnect 로 정리
+// 연결 끊김 감지: .info/connected 를 구독해 '재연결될 때마다' online 값을 다시 쓴다.
+// (최초 1회만 쓰면, 모바일에서 잠깐 끊겼다 붙을 때 onDisconnect 가 남긴 offline 값이
+//  복구되지 않아 접속 중인데도 유령으로 남는 버그가 생긴다.)
+// 반환값은 정리 함수 — 언마운트 시 호출해 구독을 끊는다.
 export const markPresence = (path, onlineValue, offlineValue) => {
   const r = ref(db, path)
-  set(r, onlineValue)
-  onDisconnect(r).set(offlineValue)
+  const connRef = ref(db, '.info/connected')
+  const unsub = onValue(connRef, (snap) => {
+    if (snap.val() !== true) return // 끊긴 상태 — 아무것도 안 함(재연결 시 다시 호출됨)
+    // 재연결될 때마다: 먼저 끊김 핸들러를 예약하고, 그 다음 online 값을 쓴다.
+    onDisconnect(r).set(offlineValue).then(() => set(r, onlineValue))
+  })
+  return unsub
 }
 
 // 경로 값 실시간 구독 훅. 값이 없으면 null.

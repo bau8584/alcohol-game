@@ -2,18 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useRoom } from '../hooks/useRoom'
 import { gameById } from '../games/registry'
-import { joinRoom, setPlayerTeam, leaveRoom, playBase, claimHost, releaseHost, isPlayerOffline, reclaimRecord } from '../lib/actions'
+import { joinRoom, setPlayerTeam, leaveRoom, playBase, releaseHost, isPlayerOffline, reclaimRecord } from '../lib/actions'
 import { ensurePlayerId, getSession, saveSession, clearSession } from '../lib/session'
 import { markPresence, roomPath } from '../lib/db'
 import HeartBar from '../components/HeartBar'
 import LobbyQuestions from '../components/LobbyQuestions'
+import GameCatalog from '../components/GameCatalog'
 import HowToPlay from '../components/HowToPlay'
 import SharedResult from '../components/SharedResult'
 import HostConsole from '../components/HostConsole'
 import RoomPanel from '../components/RoomPanel'
 import SettingsMenu from '../components/SettingsMenu'
+import PlayerMenu from '../components/PlayerMenu'
 import JoinQR from '../components/JoinQR'
-import ThemeSwitcher from '../components/ThemeSwitcher'
 import BackButton from '../components/BackButton'
 import { Button, Card, PhaseTag } from '../components/ui'
 
@@ -51,7 +52,9 @@ export default function Player() {
   }
 
   useEffect(() => {
-    if (me) markPresence(roomPath(roomId, `presence/${playerId}`), true, false)
+    if (!me) return
+    const unsub = markPresence(roomPath(roomId, `presence/${playerId}`), true, false)
+    return unsub
   }, [!!me, roomId, playerId])
 
   // 진행자+참가자 모드 탭 자동 전환:
@@ -186,12 +189,10 @@ export default function Player() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {game && <PhaseTag status={meta.roundStatus} />}
-          {!iAmHost && <HostClaim roomId={roomId} playerId={playerId} />}
-          <button onClick={leaveAndReset} className="clay px-2.5 py-2 text-sm font-bold" style={{ background: 'var(--surface)', color: 'var(--ink)' }} title="나가기 · 접속 기록 지우기">🚪</button>
           {iAmHost ? (
             <SettingsMenu roomId={roomId} meta={meta} players={players} onShowQR={() => setQrOpen(true)} />
           ) : (
-            <ThemeSwitcher />
+            <PlayerMenu roomId={roomId} playerId={playerId} onShowQR={() => setQrOpen(true)} onLeave={leaveAndReset} />
           )}
         </div>
       </div>
@@ -234,18 +235,19 @@ export default function Player() {
             {game && base ? (
               <game.PlayerView roomId={roomId} base={base} meta={meta} players={players} teams={teams} me={me} myTeam={myTeam} />
             ) : (
-              <div>
-                <div className="text-center py-6" style={{ color: 'var(--ink-soft)' }}>
+              <div className="space-y-3">
+                <div className="text-center py-4" style={{ color: 'var(--ink-soft)' }}>
                   <div className="text-4xl mb-2 animate-pulse">⏳</div>
                   진행자가 게임을 고르는 중…
-                  <div className="mt-1 text-sm">{iAmHost ? '🖥 진행 탭에서 게임을 고르세요!' : '기다리는 동안 질문을 적어봐요 👇'}</div>
+                  <div className="mt-1 text-sm">{iAmHost ? '🖥 진행 탭에서 게임을 고르세요!' : '기다리는 동안 구경하고 질문도 적어봐요 👇'}</div>
                 </div>
-                <LobbyQuestions roomId={roomId} me={me} />
+                <GameCatalog defaultOpen />
+                <LobbyQuestions roomId={roomId} me={me} adult={!!meta.adultEnabled} defaultOpen />
               </div>
             )}
           </div>
           {/* 결과 화면: 공개되면 자동으로 펼쳐지고, 토글로 언제든 여닫기 — 호스트 화면 없이도 결과 확인 */}
-          {game && base && <SharedResult key={`res-${game.id}`} game={game} roomId={roomId} base={base} meta={meta} players={players} teams={teams} />}
+          {game && base && game.shareResult !== false && <SharedResult key={`res-${game.id}`} game={game} roomId={roomId} base={base} meta={meta} players={players} teams={teams} />}
           {/* 규칙은 게임 화면 아래에, 기본은 접힌 상태 — 게임 진행을 가리지 않도록 */}
           {game && base && <HowToPlay key={game.id} gameId={game.id} emoji={game.emoji} name={game.name} defaultOpen={false} />}
         </>
@@ -263,47 +265,6 @@ export default function Player() {
         </div>
       )}
     </div>
-  )
-}
-
-// 참가자 폰에서 PIN 1회 입력해 '진행자 되기' — 성공하면 meta.hostPlayerId = 나.
-function HostClaim({ roomId, playerId }) {
-  const [ask, setAsk] = useState(false)
-  const [pin, setPin] = useState('')
-  const [err, setErr] = useState('')
-  const submit = async () => {
-    if (await claimHost(roomId, playerId, pin)) { setAsk(false); setPin(''); setErr('') }
-    else setErr('PIN이 달라요')
-  }
-  return (
-    <>
-      <button onClick={() => setAsk(true)} className="clay px-2.5 py-2 text-sm font-bold" style={{ background: 'var(--surface)', color: 'var(--ink)' }} title="진행자 되기 (PIN 필요)">🎛</button>
-      {ask && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.55)' }} onClick={() => setAsk(false)}>
-          <div className="clay p-5 w-full max-w-sm text-center" style={{ background: 'var(--surface)' }} onClick={(e) => e.stopPropagation()}>
-            <div className="text-5xl">🎛</div>
-            <h3 className="font-display text-xl mt-2">진행자 되기</h3>
-            <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>
-              PIN을 넣으면 이 폰에서 <b>게임 진행 + 참여</b>를 같이 할 수 있어요.
-            </p>
-            <input
-              value={pin}
-              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setErr('') }}
-              inputMode="numeric"
-              placeholder="호스트 PIN"
-              autoFocus
-              className="clay-inset w-full px-4 py-3 text-center my-3"
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
-            />
-            {err && <p className="mb-2 font-bold" style={{ color: 'var(--c-coral)' }}>{err}</p>}
-            <div className="flex gap-2">
-              <Button className="flex-1" onClick={submit}>진행자 되기</Button>
-              <Button variant="ghost" className="flex-1" onClick={() => setAsk(false)}>취소</Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
   )
 }
 

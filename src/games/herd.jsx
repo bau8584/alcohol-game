@@ -3,6 +3,7 @@
 // 등수는 득표수 기준 + 동점은 공동 등수(1,1,3). 득표 0인 사람은 등수 없음.
 import { useEffect, useMemo, useState } from 'react'
 import { useValue, dbSet, toList } from '../lib/db'
+import QpoolPick from '../components/QpoolPick'
 
 // 질문 풀 — 🎲 일반 / 🎲 19금(19금 토글 ON일 때만 노출)
 // 군중심리는 '집단이 한 명으로 몰릴 평판·캐릭터 예측'에 특화.
@@ -73,7 +74,7 @@ function rankPlayers(players, counts) {
   return voted
 }
 
-function HostView({ base, meta, players, teams, writePrompt }) {
+function HostView({ roomId, base, meta, players, teams, writePrompt }) {
   const raw = useValue(`${base}/pick`)
   const safeRank = useValue(`${base}/safeRank`) || 1
   const reveal = meta.roundStatus === 'reveal'
@@ -115,9 +116,10 @@ function HostView({ base, meta, players, teams, writePrompt }) {
       {!reveal && (
         <div className="mb-3 max-w-md mx-auto">
           <input value={q} onChange={(e) => writeQ(e.target.value)} placeholder="질문 (직접 입력 또는 주사위)" className="clay-inset w-full px-3 py-2.5 text-center" />
-          <div className="flex gap-2 mt-2 justify-center">
+          <div className="flex flex-wrap gap-2 mt-2 justify-center items-center">
             <button onClick={() => rollFrom(NORMAL)} className="clay-btn px-6 py-2 text-2xl" style={{ background: 'var(--c-grape)', color: '#fff' }} title="랜덤 질문">🎲 일반</button>
             {meta.adultEnabled && <button onClick={() => rollFrom(ADULT)} className="clay-btn px-6 py-2 text-2xl" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
+            <QpoolPick roomId={roomId} onPick={writeQ} />
           </div>
 
           {/* 안전 범위 — 인원에 맞춰 난이도 조절 */}

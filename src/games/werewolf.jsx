@@ -7,12 +7,33 @@ import { useValue, dbSet, dbUpdate, dbRemove, toList } from '../lib/db'
 import { Button } from '../components/ui'
 
 const ROLES = {
-  werewolf: { name: '늑대인간', emoji: '🐺', team: 'wolf', desc: '밤에 동료 늑대를 확인. 들키지 말고 살아남기.' },
-  seer: { name: '예언자', emoji: '🔮', team: 'village', desc: '밤에 한 명의 역할 또는 가운데 카드 2장을 확인.' },
-  robber: { name: '도둑', emoji: '🥷', team: 'village', desc: '밤에 한 명과 역할을 바꾸고 새 역할을 확인. 이후엔 바뀐 역할 편.' },
-  troublemaker: { name: '트러블메이커', emoji: '🃏', team: 'village', desc: '밤에 다른 두 사람의 역할을 몰래 맞바꿈(자기는 안 봄).' },
-  villager: { name: '마을 주민', emoji: '🧑‍🌾', team: 'village', desc: '특수 능력 없음. 토론으로 늑대 찾기.' },
+  werewolf: {
+    name: '늑대인간', emoji: '🐺', team: 'wolf', teamName: '늑대팀',
+    desc: '밤에 눈을 떠서 다른 늑대가 누구인지 서로 확인해요.',
+    goal: '정체를 숨기고 낮 투표에서 안 걸리기.',
+  },
+  seer: {
+    name: '예언자', emoji: '🔮', team: 'village', teamName: '마을팀',
+    desc: '밤에 한 명의 카드, 또는 가운데 카드 2장을 몰래 봐요.',
+    goal: '알아낸 정보로 늑대를 찾아 지목.',
+  },
+  robber: {
+    name: '도둑', emoji: '🥷', team: 'village', teamName: '마을팀',
+    desc: '밤에 한 명의 카드를 훔쳐 내 것과 바꾸고, 바뀐 내 역할을 확인해요. (상대는 바뀐 걸 모름)',
+    goal: '바꾼 뒤엔 새 역할의 편! 늑대를 훔치면 내가 늑대가 돼요.',
+  },
+  troublemaker: {
+    name: '트러블메이커', emoji: '🃏', team: 'village', teamName: '마을팀',
+    desc: '밤에 나 말고 다른 두 사람의 카드를 서로 몰래 바꿔요. (내용은 안 봄, 당사자도 모름)',
+    goal: '혼란을 일으켜 늑대를 흔들기.',
+  },
+  villager: {
+    name: '마을 주민', emoji: '🧑‍🌾', team: 'village', teamName: '마을팀',
+    desc: '특수 능력 없음 · 밤엔 아무것도 안 해요.',
+    goal: '토론으로 늑대를 찾기.',
+  },
 }
+const teamLabel = (r) => (ROLES[r]?.team === 'wolf' ? '🐺 늑대팀' : '🏡 마을팀')
 const roleName = (r) => (r ? `${ROLES[r].emoji} ${ROLES[r].name}` : '—')
 const NIGHT_ORDER = ['werewolf', 'seer', 'robber', 'troublemaker']
 
@@ -59,6 +80,31 @@ function activeSteps(rolesRaw) {
 }
 const robberOf = (rolesRaw) => Object.entries(rolesRaw || {}).find(([, r]) => r === 'robber')?.[0] || null
 
+// 처음 하는 사람을 위한 진행 흐름·승리조건 안내 (설정 화면)
+function FlowGuide() {
+  const [open, setOpen] = useState(true)
+  return (
+    <div className="clay-inset mt-3 max-w-lg mx-auto text-left">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-center justify-between px-3 py-2">
+        <span className="font-display text-sm">🔰 처음이면 읽어요 · 이렇게 진행해요</span>
+        <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>{open ? '접기 ▲' : '펼치기 ▼'}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 text-sm" style={{ color: 'var(--ink-soft)' }}>
+          <ol className="space-y-1 list-decimal list-inside">
+            <li><b>밤</b> — 진행자가 역할을 하나씩 부르면, <b>그 역할인 사람만</b> 자기 폰에서 몰래 행동해요. (누가 그 역할인지는 비밀)</li>
+            <li><b>낮</b> — 다 같이 토론하며 늑대를 추리해요.</li>
+            <li><b>투표</b> — 각자 늑대 의심자 한 명을 지목.</li>
+            <li><b>결과</b> — <b style={{ color: 'var(--ink)' }}>늑대를 한 명이라도 처형하면 마을팀 승</b>, 못 잡으면 늑대팀 승.</li>
+          </ol>
+          <p className="mt-2">😈 핵심: <b style={{ color: 'var(--ink)' }}>도둑·트러블메이커 때문에 밤새 역할이 바뀔 수 있어요.</b> 그래서 낮엔 내 역할이 처음과 다를 수도 있어요. 승패는 <b style={{ color: 'var(--ink)' }}>마지막(밤이 끝난 뒤) 역할</b> 기준!</p>
+          <p className="mt-1 text-xs">탈락 없는 단판 · 늑대 카드 2장이 다 가운데에 있으면(=플레이어 중 늑대 0명) 아무도 처형 안 하면 마을 승.</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /* ═══════════════ 호스트 ═══════════════ */
 function HostView({ base, players }) {
   const phase = useValue(`${base}/phase`) || 'setup'
@@ -97,11 +143,26 @@ function HostView({ base, players }) {
         <div className="text-5xl">🐺</div>
         <p className="font-display text-2xl mt-2">한밤의 늑대인간</p>
         <p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>{n}명 · 카드 {n + 3}장(가운데 3장 포함)</p>
-        <div className="flex flex-wrap justify-center gap-2 mt-3">
-          {Object.entries(counts).map(([r, c]) => (
-            <span key={r} className="clay-inset px-3 py-1.5 text-sm">{roleName(r)} ×{c}</span>
-          ))}
+
+        <FlowGuide />
+
+        <div className="mt-4 text-left max-w-lg mx-auto">
+          <div className="font-display text-sm mb-2 text-center">이번 판 역할 ({n + 3}장)</div>
+          <div className="space-y-1.5">
+            {Object.entries(counts).map(([r, c]) => (
+              <div key={r} className="clay-inset px-3 py-2 flex items-start gap-2">
+                <span className="text-2xl shrink-0">{ROLES[r].emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-sm">
+                    {ROLES[r].name} <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>×{c} · {teamLabel(r)}</span>
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>{ROLES[r].desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
+
         {n < 3 ? (
           <p className="mt-4 font-bold" style={{ color: 'var(--c-coral)' }}>최소 3명이 필요해요.</p>
         ) : (
@@ -120,7 +181,11 @@ function HostView({ base, players }) {
         <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>🌙 밤 · {nightStep + 1}/{steps.length}단계</div>
         <div className="text-6xl mt-2">{ROLES[cur].emoji}</div>
         <p className="font-display text-3xl mt-2">{ROLES[cur].name}의 시간</p>
-        <p className="mt-2" style={{ color: 'var(--ink-soft)' }}>모두 눈 감고, 해당 역할만 자기 폰에서 행동하세요.</p>
+        <div className="clay-inset px-4 py-2.5 mt-3 max-w-md mx-auto text-sm">
+          <div style={{ color: 'var(--ink)' }}>{ROLES[cur].desc}</div>
+        </div>
+        <p className="mt-3 font-bold" style={{ color: 'var(--ink)' }}>👉 "{ROLES[cur].name}, 눈 뜨세요"</p>
+        <p className="mt-1" style={{ color: 'var(--ink-soft)' }}>그 역할만 폰에서 행동하고, 끝나면 다시 눈 감기.</p>
         <p className="text-xs mt-1" style={{ color: 'var(--ink-soft)' }}>(누가 그 역할인지는 비밀!)</p>
         <Button className="mt-4" onClick={nextNight}>{nightStep + 1 >= steps.length ? '☀️ 아침 · 토론으로' : '다음 단계 ▶'}</Button>
       </div>
@@ -227,11 +292,12 @@ function PlayerView({ base, players, me }) {
   }
 
   const MyCard = () => (
-    <div className="clay p-4 text-center" style={{ background: 'var(--c-grape)', color: '#fff' }}>
-      <div className="text-sm opacity-90">내 역할{known !== orig ? ' (도둑질로 바뀜)' : ''}</div>
+    <div className="clay p-4 text-center" style={{ background: ROLES[known].team === 'wolf' ? 'var(--c-coral)' : 'var(--c-grape)', color: '#fff' }}>
+      <div className="text-sm opacity-90">내 역할{known !== orig ? ' (도둑질로 바뀜)' : ''} · {ROLES[known].teamName}</div>
       <div className="text-5xl mt-1">{ROLES[known].emoji}</div>
       <div className="font-display text-2xl">{ROLES[known].name}</div>
       <div className="text-xs opacity-90 mt-1">{ROLES[known].desc}</div>
+      <div className="clay-inset mt-2 px-2 py-1 text-xs" style={{ background: 'rgba(255,255,255,0.18)' }}>🎯 {ROLES[known].goal}</div>
     </div>
   )
 

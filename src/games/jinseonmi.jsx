@@ -12,6 +12,85 @@ const SLOTS = [
   { key: 'mi', label: '미', medal: '🥉', color: 'var(--c-sky)' },
 ]
 
+// 질문 주사위 — 질문자가 카테고리를 골라 굴린다. 진선미는 top3(진🥇선🥈미🥉)를 뽑으므로 "제일 ~한 사람?" 형태.
+const pickOne = (arr) => arr[Math.floor(Math.random() * arr.length)]
+// 💘 설렘 — 호감·매력·연애
+const Q_SWEET = [
+  '여기서 제일 잘생긴/예쁜 사람은?',
+  '사귀고 싶은 사람은?',
+  '첫인상 제일 좋았던 사람은?',
+  '무인도에 딱 한 명 데려간다면?',
+  '목소리에 반할 것 같은 사람은?',
+  '이상형에 제일 가까운 사람은?',
+  '웃는 게 제일 매력적인 사람은?',
+  '술친구로 최고인 사람은?',
+  '소개팅 주선받고 싶은 사람은?',
+  '스타일·패션 제일 좋은 사람은?',
+  '같이 여행 가고 싶은 사람은?',
+  '고민 상담하고 싶은 사람은?',
+  '남자/여자로서 제일 멋진 사람은?',
+  '연락처 제일 받고 싶은 사람은?',
+  '다시 태어나도 친구 하고 싶은 사람은?',
+  '몰래 잘 챙겨주는 사람은?',
+  '분위기 메이커는?',
+  '눈웃음이 제일 예쁜 사람은?',
+]
+// 😈 놀림 — 로스트
+const Q_ROAST = [
+  '제일 먼저 취해서 뻗을 것 같은 사람은?',
+  '술 취하면 제일 진상 될 것 같은 사람은?',
+  '흑역사 제일 많을 것 같은 사람은?',
+  '검색기록 절대 못 보여줄 것 같은 사람은?',
+  '자취방 제일 더러울 것 같은 사람은?',
+  '전 애인한테 아직 미련 남았을 것 같은 사람은?',
+  '몰래 성형했을 것 같은 사람은?',
+  '카톡 읽씹 제일 잘할 것 같은 사람은?',
+  '방귀 뀌고 시치미 뗄 것 같은 사람은?',
+  '술값 계산 때 슬쩍 화장실 갈 것 같은 사람은?',
+  '자면서 침 흘릴 것 같은 사람은?',
+  '취하면 갑자기 울 것 같은 사람은?',
+  '여기서 제일 허세 심한 사람은?',
+  '연락 제일 안 되는 사람은?',
+  '엄마한테 아직 용돈 받을 것 같은 사람은?',
+  '다이어트 맨날 실패할 것 같은 사람은?',
+]
+// 🤯 반전 — 숨은 반전
+const Q_TWIST = [
+  '알고 보면 제일 밝힐 것 같은 사람은?',
+  '순진해 보이는데 반전 있을 것 같은 사람은?',
+  '조용한데 사고 제일 크게 칠 것 같은 사람은?',
+  '착해 보이는데 뒤끝 있을 것 같은 사람은?',
+  '첫인상과 실제가 제일 다른 사람은?',
+  '술 마시면 완전 딴사람 될 것 같은 사람은?',
+  '알고 보면 금수저일 것 같은 사람은?',
+  '의외로 연애 고수일 것 같은 사람은?',
+  '겉은 센데 알고 보면 여린 사람은?',
+  '의외로 인기 많을 것 같은 사람은?',
+  '놀 것 같은데 의외로 모범생일 사람은?',
+  '조용한데 알고 보면 인싸일 사람은?',
+]
+// 🔞 19금 — 연애·스킨십·야함 (19금 토글 ON일 때만)
+const Q_ADULT = [
+  '하룻밤 같이 보내고 싶은 사람은?',
+  '키스하고 싶은 사람은?',
+  '여기서 제일 섹시한 사람은?',
+  '몸매 제일 좋을 것 같은 사람은?',
+  '침대에서 잘할 것 같은 사람은?',
+  '술 취하면 넘어올 것 같은 사람은?',
+  '은근 밝힐 것 같은 사람은?',
+  '스킨십 진도 제일 빠를 사람은?',
+  '오늘 밤 썸 타고 싶은 사람은?',
+  '모텔 가자면 갈 것 같은 사람은?',
+  '목소리가 제일 야한 사람은?',
+  '비밀 연애하고 싶은 사람은?',
+  '남몰래 눈길 가는 사람은?',
+  '반전 몸매일 것 같은 사람은?',
+  '원나잇 상대로 최고일 사람은?',
+  '애프터 신청하고 싶은 사람은?',
+  '취향 저격인 사람은?',
+  '전 애인 삼고 싶은 사람은?',
+]
+
 // ───────────────────────── 호스트 화면 ─────────────────────────
 function HostView({ base, players }) {
   const q = useValue(`${base}/q`)
@@ -115,10 +194,11 @@ function HostView({ base, players }) {
 }
 
 // ───────────────────────── 질문 작성 (질문자) ─────────────────────────
-function Compose({ base, players, me }) {
+function Compose({ base, players, me, meta }) {
   const [target, setTarget] = useState(null)
   const [text, setText] = useState('')
   const candidates = players.filter((p) => p.id !== me.id)
+  const roll = (arr) => setText(pickOne(arr))
 
   const send = () => {
     if (!target) return alert('질문할 상대를 고르세요.')
@@ -148,12 +228,21 @@ function Compose({ base, players, me }) {
         ))}
         {candidates.length === 0 && <p className="col-span-2 text-center text-sm" style={{ color: 'var(--ink-soft)' }}>다른 참가자가 없어요.</p>}
       </div>
+      <div className="mt-3">
+        <div className="text-xs mb-1" style={{ color: 'var(--ink-soft)' }}>🎲 질문 뽑기 — 카테고리 골라 굴리기 (수정 가능)</div>
+        <div className="flex flex-wrap gap-2 justify-center">
+          <button onClick={() => roll(Q_SWEET)} className="clay-btn px-3 py-1.5 text-sm font-display" style={{ background: 'var(--c-grape)', color: '#fff' }}>💘 설렘</button>
+          <button onClick={() => roll(Q_ROAST)} className="clay-btn px-3 py-1.5 text-sm font-display" style={{ background: 'var(--c-coral)', color: '#fff' }}>😈 놀림</button>
+          <button onClick={() => roll(Q_TWIST)} className="clay-btn px-3 py-1.5 text-sm font-display" style={{ background: 'var(--c-sky)', color: '#fff' }}>🤯 반전</button>
+          {meta?.adultEnabled && <button onClick={() => roll(Q_ADULT)} className="clay-btn px-3 py-1.5 text-sm font-display" style={{ background: '#e64545', color: '#fff' }} title="19금 🔞">🔞 19</button>}
+        </div>
+      </div>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="익명 질문 (예: 여기서 제일 좋아하는 사람 진선미는?)"
         rows={3}
-        className="clay-inset w-full px-4 py-3 mt-3 resize-none"
+        className="clay-inset w-full px-4 py-3 mt-2 resize-none"
       />
       <Button className="w-full mt-3" onClick={send}>🤫 익명으로 보내기</Button>
       <p className="mt-2 text-center text-xs" style={{ color: 'var(--ink-soft)' }}>질문자는 끝까지 비밀이에요.</p>
@@ -242,7 +331,7 @@ function Audience({ base, q, me }) {
 }
 
 // ───────────────────────── 플레이어 화면 라우터 ─────────────────────────
-function PlayerView({ base, players, me }) {
+function PlayerView({ base, meta, players, me }) {
   const q = useValue(`${base}/q`)
   const asker = useValue(`${base}/asker`)
 
@@ -257,7 +346,7 @@ function PlayerView({ base, players, me }) {
         </div>
       )
     }
-    if (asker.id === me.id) return <Compose base={base} players={players} me={me} />
+    if (asker.id === me.id) return <Compose base={base} players={players} me={me} meta={meta} />
     return (
       <div className="text-center py-10">
         <div className="text-5xl">✍️</div>

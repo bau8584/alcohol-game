@@ -23,7 +23,7 @@ const shuffle = (n) => {
 }
 
 /* ───────────────────────── 호스트 ───────────────────────── */
-function HostView({ roomId, base, players, teams }) {
+function HostView({ roomId, base, meta, players, teams }) {
   const preset = useValue(`${base}/preset`)
   const order = useValue(`${base}/order`)
   const idx = useValue(`${base}/idx`) || 0
@@ -148,6 +148,20 @@ function HostView({ roomId, base, players, teams }) {
   const fail = (b) => dbSet(`${base}/failed/${isTeam ? b.teamId : b.id}`, true)
   const nextPhoto = () => dbUpdate(base, { idx: idx + 1, revealed: false, buzz: null, failed: null })
 
+  // 진행자도 참가자(폰 1대)일 때: 사진이 보이는 진행 탭에서 바로 부저를 누를 수 있게.
+  // (사진은 진행 탭에만 있어 탭 이동 없이 참여 가능 · 판정은 그대로 진행자가 함)
+  const hostId = meta?.hostPlayerId
+  const hostP = hostId ? players.find((p) => p.id === hostId) : null
+  const hostBuzzed = !!buzzRaw?.[hostId]
+  const hostOut = hostP && (isTeam ? failed?.[hostP.teamId] : (won?.[hostP.id] || failed?.[hostP.id]))
+  const hostBuzz = () => {
+    if (!hostP || hostBuzzed) return
+    dbTransaction(`${base}/buzz/${hostP.id}`, (cur) =>
+      cur ? undefined : { ts: SERVER_TS, nickname: hostP.nickname, teamId: hostP.teamId }
+    )
+    if (navigator.vibrate) navigator.vibrate(60)
+  }
+
   return (
     <div className="text-center">
       <div className="flex items-center justify-between mb-2">
@@ -202,6 +216,19 @@ function HostView({ roomId, base, players, teams }) {
           </ol>
         )}
       </div>
+
+      {/* 진행자도 참여(폰 1대) — 사진 보면서 여기서 바로 부저 */}
+      {hostP && !hostOut && (
+        <button
+          key={`hb-${idx}`}
+          onClick={hostBuzz}
+          disabled={hostBuzzed}
+          className="clay-btn mt-4 px-6 py-3 font-display text-lg rounded-full"
+          style={{ background: hostBuzzed ? 'var(--c-grape)' : 'var(--c-coral)', color: '#fff' }}
+        >
+          {hostBuzzed ? '✅ 나 눌렀다!' : '🔔 나도 부저 (진행자)'}
+        </button>
+      )}
 
       {/* 진행 컨트롤 */}
       <div className="flex flex-wrap justify-center gap-2 mt-4">

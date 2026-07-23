@@ -113,6 +113,17 @@ function PlayerView({ base, meta, players, me, myTeam }) {
   const topic = topicIdx != null ? TOPICS[topicIdx] : null
   const [seq, setSeq] = useState(mine || [])
 
+  // 공개: 내 순위 + 팀 내 각 항목 일치 인원 (훅은 조기 반환보다 위에서 무조건 호출 — 훅 순서 고정)
+  const teamAgree = useMemo(() => {
+    if (!reveal || !myTeam || !topic) return null
+    const memberIds = players.filter((p) => p.teamId === myTeam.id).map((p) => p.id)
+    return topic.items.map((_, item) => {
+      const myRank = (mine || []).indexOf(item)
+      if (myRank < 0) return 0
+      return memberIds.filter((pid) => Array.isArray(ranks?.[pid]) && ranks[pid].indexOf(item) === myRank).length
+    })
+  }, [reveal, myTeam, players, ranks, mine, topic])
+
   if (!topic) {
     return <div className="text-center py-10"><div className="text-5xl">📊</div><p className="mt-3 font-display text-xl" style={{ color: 'var(--ink-soft)' }}>진행자가 주제를 고르는 중…</p></div>
   }
@@ -127,17 +138,6 @@ function PlayerView({ base, meta, players, me, myTeam }) {
     setSeq(next)
     dbSet(`${base}/ranks/${me.id}`, next)
   }
-
-  // 공개: 내 순위 + 팀 내 각 항목 일치 인원
-  const teamAgree = useMemo(() => {
-    if (!reveal || !myTeam) return null
-    const memberIds = players.filter((p) => p.teamId === myTeam.id).map((p) => p.id)
-    return topic.items.map((_, item) => {
-      const myRank = (mine || []).indexOf(item)
-      if (myRank < 0) return 0
-      return memberIds.filter((pid) => Array.isArray(ranks?.[pid]) && ranks[pid].indexOf(item) === myRank).length
-    })
-  }, [reveal, myTeam, players, ranks, mine, topic])
 
   return (
     <div className="text-center">

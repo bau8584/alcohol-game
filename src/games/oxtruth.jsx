@@ -25,6 +25,55 @@ const HINTS = [
   '학교 다닐 때 별명이 있었어',
 ]
 
+// 작성자 공개 방식 옵션 (진행자 선택)
+const AUTHOR_MODES = [
+  { id: 'open', label: '🔓 공개 때', desc: '블라인드 투표 → 공개 순간 "작성자는 OO!" 반전 (추천)' },
+  { id: 'always', label: '👀 항상 표시', desc: '투표 중에도 작성자가 보여요 (수다·놀림 위주)' },
+  { id: 'end', label: '🙈 결과에서만', desc: '끝까지 숨기고 마지막에 몰아보기 (최대 미스터리)' },
+]
+function AuthorModePicker({ mode, onPick }) {
+  const cur = AUTHOR_MODES.find((m) => m.id === mode) || AUTHOR_MODES[0]
+  return (
+    <div className="max-w-sm mx-auto mt-4 text-center">
+      <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>작성자 공개 방식</div>
+      <div className="flex gap-1.5 justify-center">
+        {AUTHOR_MODES.map((m) => (
+          <button key={m.id} onClick={() => onPick(m.id)} className="clay-btn px-3 py-2 text-sm font-display flex-1"
+            style={mode === m.id ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+      <div className="text-xs mt-1" style={{ color: 'var(--ink-soft)' }}>{cur.desc}</div>
+    </div>
+  )
+}
+
+// 결과 몰아보기 — 모든 문장 → 작성자 → 진실/거짓
+function Recap({ order, entriesRaw, byId }) {
+  const ids = Array.isArray(order) ? order : []
+  if (!ids.length) return null
+  return (
+    <div className="max-w-md mx-auto mt-5 text-left">
+      <div className="text-sm mb-2 text-center" style={{ color: 'var(--ink-soft)' }}>📜 누가 뭘 썼나 몰아보기</div>
+      <div className="space-y-1.5">
+        {ids.map((id, i) => {
+          const e = entriesRaw?.[id]
+          if (!e) return null
+          return (
+            <div key={id} className="clay-inset px-3 py-2 flex items-center gap-2">
+              <span className="font-display text-sm w-5 shrink-0" style={{ color: 'var(--ink-soft)' }}>{i + 1}</span>
+              <span className="flex-1 text-sm">“{e.text}”</span>
+              <span className="text-sm font-bold shrink-0">{byId[id]?.nickname || '?'}</span>
+              <span className="text-sm shrink-0" style={{ color: e.truth ? 'var(--c-mint)' : 'var(--c-coral)' }}>{e.truth ? '⭕' : '🔴'}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function HostView({ base, players }) {
   const phase = useValue(`${base}/phase`) || 'write'
   const entriesRaw = useValue(`${base}/entry`)
@@ -32,6 +81,8 @@ function HostView({ base, players }) {
   const idx = useValue(`${base}/idx`) ?? 0
   const shown = useValue(`${base}/shown`)
   const scoreRaw = useValue(`${base}/score`)
+  const authorMode = useValue(`${base}/authorMode`) || 'open' // open=공개때 · always=투표중에도 · end=결과에서만
+  const peekRaw = useValue(`${base}/peek`)
   const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
 
   const submitted = players.filter((p) => entriesRaw?.[p.id]?.text)
@@ -53,10 +104,15 @@ function HostView({ base, players }) {
 
   const scores = toList(scoreRaw).map((s) => ({ ...s, nickname: byId[s.id]?.nickname || '?', n: s.value || 0 })).sort((a, b) => b.n - a.n)
 
+  // 작성자 표시 여부: 진행자가 이번 문장 몰래보기(peek) 눌렀거나 · 항상보기 모드 · (공개됐고 결과전용 모드가 아님)
+  const authorVisible = !!peekRaw?.[curId] || authorMode === 'always' || (shown && authorMode !== 'end')
+
   const startQuiz = () => {
     const ids = shuffle(submitted.map((p) => p.id))
-    dbUpdate(base, { order: ids, idx: 0, shown: false, phase: 'quiz' })
+    dbUpdate(base, { order: ids, idx: 0, shown: false, phase: 'quiz', peek: null })
   }
+  const setMode = (m) => dbSet(`${base}/authorMode`, m)
+  const peekAuthor = () => curId && dbSet(`${base}/peek/${curId}`, true)
 
   // 공개: 점수 정산 (한 번만) 후 shown=true
   const reveal = () => {
@@ -80,6 +136,7 @@ function HostView({ base, players }) {
     dbRemove(`${base}/entry`)
     dbRemove(`${base}/vote`)
     dbRemove(`${base}/order`)
+    dbRemove(`${base}/peek`)
     dbUpdate(base, { idx: 0, shown: false, phase: 'write' })
   }
 
@@ -97,7 +154,8 @@ function HostView({ base, players }) {
             <span key={p.id} className="clay-inset px-3 py-1.5 text-sm">{p.nickname}{entriesRaw?.[p.id]?.text ? ' ✓' : ' …'}</span>
           ))}
         </div>
-        <Button className="w-full max-w-sm" onClick={startQuiz} disabled={submitted.length < 2}>
+        <AuthorModePicker mode={authorMode} onPick={setMode} />
+        <Button className="w-full max-w-sm mt-3" onClick={startQuiz} disabled={submitted.length < 2}>
           {submitted.length < 2 ? '2명 이상 제출해야 시작' : `퀴즈 시작 (${submitted.length}문장)`}
         </Button>
         {scores.some((s) => s.n) && (
@@ -123,6 +181,7 @@ function HostView({ base, players }) {
           <Button className="flex-1" onClick={again}>한 번 더 (점수 유지)</Button>
           <Button variant="ghost" onClick={resetAll}>처음부터</Button>
         </div>
+        <Recap order={order} entriesRaw={entriesRaw} byId={byId} />
       </div>
     )
   }
@@ -141,6 +200,12 @@ function HostView({ base, players }) {
       {!shown ? (
         <>
           <div className="text-lg font-display mb-2">⭕ 진실일까 🔴 거짓일까?</div>
+          {/* 작성자 미리 표시(항상보기 모드/몰래보기) or 몰래보기 버튼 */}
+          {authorVisible ? (
+            <div className="clay-inset inline-block px-4 py-1.5 mb-2 text-sm">✍️ 작성자: <b>{byId[curId]?.nickname}</b></div>
+          ) : (
+            <div className="mb-2"><button onClick={peekAuthor} className="clay-btn px-4 py-1.5 text-sm" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>👤 작성자 미리 공개</button></div>
+          )}
           <div className="text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>{votedIds.size} / {voters.length} 선택 · 표는 공개 때 🔒</div>
           {notVoted.length > 0 && (
             <div className="mb-3">
@@ -157,7 +222,9 @@ function HostView({ base, players }) {
           <div className="font-display text-3xl mb-2" style={{ color: cur?.truth ? 'var(--c-mint)' : 'var(--c-coral)' }}>
             → {cur?.truth ? '⭕ 진실!' : '🔴 거짓!'}
           </div>
-          <div className="clay px-4 py-2 mb-2">작성자는… <b className="font-display text-lg">{byId[curId]?.nickname} 😎</b></div>
+          {authorVisible
+            ? <div className="clay px-4 py-2 mb-2">작성자는… <b className="font-display text-lg">{byId[curId]?.nickname} 😎</b></div>
+            : <div className="clay px-4 py-2 mb-2 text-sm" style={{ color: 'var(--ink-soft)' }}>🙈 작성자는 결과에서 몰아봐요</div>}
           <div className="text-sm mb-1">⭕ 진실 {yes}표 · 🔴 거짓 {no}표</div>
           {authorFooled && <div className="font-display" style={{ color: 'var(--c-grape)' }}>👏 과반을 속였다! {byId[curId]?.nickname} +2점</div>}
           <p className="text-sm mt-1" style={{ color: 'var(--c-mint)' }}>맞힌 사람 (+1): {correctVoters.join(', ') || '없음'}</p>
@@ -175,6 +242,8 @@ function PlayerView({ base, players, me }) {
   const order = useValue(`${base}/order`)
   const idx = useValue(`${base}/idx`) ?? 0
   const shown = useValue(`${base}/shown`)
+  const entriesRaw = useValue(`${base}/entry`)
+  const authorMode = useValue(`${base}/authorMode`) || 'open'
   const [text, setText] = useState('')
   const [truth, setTruth] = useState(null) // true=진실, false=거짓
 
@@ -182,7 +251,11 @@ function PlayerView({ base, players, me }) {
   const curId = phase === 'quiz' ? orderArr[idx] : null
   const cur = useValue(curId ? `${base}/entry/${curId}` : null)
   const myVote = useValue(curId && curId !== me.id ? `${base}/vote/${curId}/${me.id}` : null)
+  const peek = useValue(curId ? `${base}/peek/${curId}` : null)
   const hint = useMemo(() => HINTS[Math.floor(Math.random() * HINTS.length)], [])
+  const byId = useMemo(() => Object.fromEntries(players.map((p) => [p.id, p])), [players])
+  const authorVisible = !!peek || authorMode === 'always' || (shown && authorMode !== 'end')
+  const authorName = curId ? byId[curId]?.nickname : null
 
   // 작성 단계
   if (phase === 'write') {
@@ -208,7 +281,12 @@ function PlayerView({ base, players, me }) {
     )
   }
 
-  if (phase === 'done') return <p className="text-center py-10 font-display text-lg">🏆 결과 발표! TV를 봐요</p>
+  if (phase === 'done') return (
+    <div className="text-center">
+      <p className="py-6 font-display text-lg">🏆 결과 발표! 점수는 TV에서 🖥️</p>
+      <Recap order={order} entriesRaw={entriesRaw} byId={byId} />
+    </div>
+  )
 
   // quiz 단계
   if (!curId) return <p className="text-center py-10" style={{ color: 'var(--ink-soft)' }}>진행자 대기 중…</p>
@@ -227,7 +305,8 @@ function PlayerView({ base, players, me }) {
   return (
     <div className="text-center">
       <div className="text-sm font-display mb-1" style={{ color: 'var(--c-grape)' }}>🃏 문장 {idx + 1} / {orderArr.length} · 이 문장을 맞혀요</div>
-      <div className="clay px-4 py-4 mb-3 font-display text-xl">“{cur?.text}”</div>
+      <div className="clay px-4 py-4 mb-2 font-display text-xl">“{cur?.text}”</div>
+      {authorVisible && <div className="text-sm mb-2" style={{ color: 'var(--ink-soft)' }}>✍️ 작성자: <b style={{ color: 'var(--ink)' }}>{authorName}</b></div>}
       {!shown ? (
         <div className="flex gap-2">
           <button onClick={() => dbSet(`${base}/vote/${curId}/${me.id}`, true)}

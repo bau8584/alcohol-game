@@ -65,6 +65,13 @@ function HostView({ base, meta, players }) {
 
   const clues = useMemo(() => resolveClues(cluesRaw, struckRaw, word, guesserId), [cluesRaw, struckRaw, word, guesserId])
   const survivors = clues.filter((c) => !c.dead)
+  // 생각 겹친 사람(같은 힌트 2명+) = 벌칙 그룹 · 이 게임의 웃음 포인트
+  const dupGroups = useMemo(() => {
+    const m = {}
+    clues.forEach((c) => { if (c.dup) { const k = norm(c.text); (m[k] || (m[k] = { text: c.text, names: [] })).names.push(nameOf(c.pid)) } })
+    return Object.values(m)
+  }, [clues, nameOf])
+  const foulNames = clues.filter((c) => c.sameAsWord && !c.dup).map((c) => nameOf(c.pid))
   const guessers = players.filter((p) => p.id === guesserId)
   const givers = players.filter((p) => p.id !== guesserId)
   const wrote = clues.length
@@ -122,6 +129,7 @@ function HostView({ base, meta, players }) {
             <span className="mx-2" style={{ color: 'var(--ink-soft)' }}>·</span>
             🙈 {guesserName}
           </div>
+          <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>겹친 힌트 쓴 사람 한 잔 · 실패하면 맞히는 사람도 한 잔 🍺</div>
 
           <div>
             <div className="text-sm mb-1" style={{ color: 'var(--c-mint)' }}>✅ 살아남은 힌트 (맞히는 사람에게 공개)</div>
@@ -132,6 +140,25 @@ function HostView({ base, meta, players }) {
               {!survivors.length && <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>다 겹쳤어요 😵 살아남은 힌트가 없네요.</span>}
             </div>
           </div>
+
+          {(dupGroups.length > 0 || foulNames.length > 0) && (
+            <div className="clay p-3 max-w-lg mx-auto animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+              <div className="font-display text-xl">💥 생각 겹침 · 한 잔!</div>
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
+                {dupGroups.map((g, i) => (
+                  <span key={i} className="clay-inset px-3 py-1.5 font-bold" style={{ background: 'rgba(255,255,255,.2)' }}>
+                    「{g.text}」 {g.names.join(', ')} 🍺
+                  </span>
+                ))}
+                {foulNames.length > 0 && (
+                  <span className="clay-inset px-3 py-1.5 font-bold" style={{ background: 'rgba(255,255,255,.2)' }}>
+                    제시어 그대로(반칙) · {foulNames.join(', ')} 🍺
+                  </span>
+                )}
+              </div>
+              <div className="text-xs mt-2 opacity-90">뻔한 힌트를 쓴 사람들이에요 · 남과 안 겹칠 단어를 노렸어야죠 😈</div>
+            </div>
+          )}
 
           <div>
             <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>전체 힌트 (겹치거나 반칙이면 무효 · 눌러서 직접 무효 처리)</div>
@@ -235,10 +262,18 @@ function PlayerView({ base, meta, players, me }) {
         <div className="font-display text-4xl">{word}</div>
         <div className="mt-3">
           {myClue ? (
-            myClue.dead ? (
-              <p className="font-display" style={{ color: 'var(--c-coral)' }}>내 힌트 「{myClue.text}」 무효 {myClue.dup ? '(겹침 💥)' : myClue.sameAsWord ? '(제시어와 동일)' : '(제외됨)'}</p>
+            myClue.dup ? (
+              <div className="clay p-4 animate-pop" style={{ background: 'var(--c-coral)', color: '#fff' }}>
+                <div className="text-4xl">💥🍺</div>
+                <p className="font-display text-xl mt-1">「{myClue.text}」 생각 겹침 · 한 잔!</p>
+                <p className="text-sm opacity-90 mt-1">남과 안 겹칠 단어를 노렸어야죠 😈</p>
+              </div>
+            ) : myClue.sameAsWord ? (
+              <p className="font-display" style={{ color: 'var(--c-coral)' }}>내 힌트 「{myClue.text}」 제시어 그대로(반칙) · 한 잔 🍺</p>
+            ) : myClue.dead ? (
+              <p className="font-display" style={{ color: 'var(--ink-soft)' }}>내 힌트 「{myClue.text}」 제외됨</p>
             ) : (
-              <p className="font-display" style={{ color: 'var(--c-mint)' }}>✅ 내 힌트 「{myClue.text}」 살아남음!</p>
+              <p className="font-display" style={{ color: 'var(--c-mint)' }}>✅ 내 힌트 「{myClue.text}」 살아남음! 굿</p>
             )
           ) : (
             <p className="text-sm" style={{ color: 'var(--ink-soft)' }}>이번엔 힌트를 안 냈어요</p>
@@ -278,7 +313,7 @@ export default {
   id: 'justone',
   name: '저스트원',
   emoji: '💡',
-  tagline: '협동 · 겹치는 힌트는 무효 · 다 같이 정답 맞히기',
+  tagline: '겹친 힌트 쓰면 한 잔 · 남과 안 겹칠 단어로 정답 돕기',
   genres: ['brain', 'party'],
   traits: [],
   HostView,

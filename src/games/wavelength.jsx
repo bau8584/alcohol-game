@@ -1,42 +1,41 @@
 // 웨이브렝스 — 스펙트럼 위 '비밀 지점'을 출제자가 단어 힌트로 설명, 나머지가 바에서 맞힌다.
 // 출제자가 타깃을 직접 지정(자유) · 3단 존 판정(🎯완벽/👍근접/😅아슬/밖=벌칙) · 존 폭은 호스트가 조절.
 // 출제자 양쪽 벌칙: 적중 0명(설명 못함) 또는 전원 적중(너무 쉽게 냄) → 출제자가 마심. '적당히 어렵게'가 최적해.
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useValue, dbSet, dbUpdate, dbTransaction, toList } from '../lib/db'
+import { useMemo, useState } from 'react'
+import { useValue, dbSet, dbUpdate, toList } from '../lib/db'
 import { Button } from '../components/ui'
 
-// 스펙트럼 기준: '진짜로 의견이 갈리는가'. 다들 비슷하게 생각하는 건 논쟁이 안 터져서 뺐다.
+// 스펙트럼 기준: '한 줄로 세울 수 있는 명확한 1차원 축'. 아무거나 올려놓고 위치를 가늠할 수 있어야
+// 출제자가 힌트를 내기 쉽고 참가자도 예측이 된다. (추상적·도덕적 축은 난해해서 뺐다)
 const SPECTRA = [
-  ['솔직함', '무례함'], ['장난', '폭력'], ['실수', '범죄'],
-  ['자신감', '허세'], ['절약', '궁상'], ['쿨하다', '집착'],
-  ['그럴 수 있지', '인성 나감'], ['용서 가능', '손절각'],
-  ['찌질하다', '멋있다'], ['오글거림', '설렘'], ['친구', '썸'],
-  ['안 맵다', '개맵다'], ['안 취함', '만취'], ['가성비', '호구'],
-  ['안 부럽다', '개부럽다'], ['안 위험', '죽을 수도'],
-  ['평범한 취미', '변태 취미'], ['안 부끄럽다', '이불킥'],
-  ['매너', '진상'], ['귀엽다', '징그럽다'], ['패션', '코스프레'],
-  ['건강식', '독'], ['개노잼', '개꿀잼'], ['어른', '애'],
-  ['참을 수 있다', '못 참는다'], ['현실적', '허황됨'],
-  ['적당히 마심', '알코올 중독'], ['맨정신', '주사 폭발'],
-  ['안 느끼함', '느끼함 폭발'], ['국룰', '오버'],
-  ['호감', '부담'], ['농담', '선 넘음'],
+  ['작다', '크다'], ['싸다', '비싸다'], ['가볍다', '무겁다'],
+  ['느리다', '빠르다'], ['짧다', '길다'], ['차갑다', '뜨겁다'],
+  ['안 맵다', '개맵다'], ['안 달다', '엄청 달다'], ['조용하다', '시끄럽다'],
+  ['어둡다', '밝다'], ['안 유명', '완전 유명'], ['흔하다', '희귀하다'],
+  ['구식', '최신'], ['촌스럽다', '세련되다'], ['쓸모없다', '필수템'],
+  ['건강에 나쁨', '건강에 좋음'], ['안 위험', '치명적'], ['가성비 나쁨', '가성비 갑'],
+  ['쉽다', '어렵다'], ['편하다', '힘들다'], ['유치하다', '어른스럽다'],
+  ['안 귀엽다', '개귀엽다'], ['안 무섭다', '개무섭다'], ['노잼', '꿀잼'],
+  ['안 부럽다', '개부럽다'], ['평범하다', '특이하다'], ['안 중독성', '개중독성'],
+  ['안 느끼함', '느끼함 폭발'], ['순하다', '독하다'], ['오래됨', '새것'],
 ]
 
-// 🔞 19금 스펙트럼 (19금 토글 ON일 때만)
+// 🔞 19금 스펙트럼 (19금 토글 ON일 때만) — 마찬가지로 '한 줄로 세울 수 있는' 축으로
 const ADULT_SPECTRA = [
-  ['순수 그 자체', '변태'], ['안 야하다', '개야하다'],
-  ['플라토닉', '에로틱'], ['보수적 스킨십', '개방적 스킨십'],
-  ['한 달에 한 번', '하루 세 번'], ['모태솔로', '선수'],
-  ['불 끄고만', '어디서든 스릴'], ['건전한 데이트', '모텔 직행'],
-  ['친구', '섹파'], ['귀엽다', '섹시하다'],
-  ['안 밝힘', '개밝힘'], ['참을 수 있음', '못 참음'],
-  ['평범한 취향', '위험한 취향'], ['첫 경험도 아직', '경험 만렙'],
-  ['0cm', '20cm'], ['천사표', '침대 위 악마'],
-  ['숙맥', '프로'], ['금욕주의', '밝힘증'],
-  ['조용한 밤', '시끄러운 밤'], ['한 번이면 충분', '밤새도록'],
-  ['불 켜야 함', '무조건 불 꺼야 함'], ['정석대로', '별걸 다 시도'],
-  ['혼자서도 OK', '무조건 둘이'], ['부끄럼쟁이', '노출광'],
-  ['30초 컷', '기본 1시간'], ['얌전한 손', '못 참는 손'],
+  ['안 야하다', '개야하다'], ['순수하다', '밝힌다'], ['건전하다', '문란하다'],
+  ['플라토닉', '에로틱'], ['얌전하다', '과감하다'], ['초보', '선수'],
+  ['안 섹시', '완전 섹시'], ['보수적', '개방적'], ['금욕', '밝힘'],
+  ['은은하다', '자극적이다'], ['소극적', '적극적'], ['안전한 취향', '위험한 취향'],
+  ['첫 경험 전', '경험 만렙'], ['금방 끝', '밤새도록'], ['조용한 밤', '시끄러운 밤'],
+  ['얌전한 손', '못 참는 손'], ['불 꺼야 함', '불 켜도 OK'], ['천사', '침대 위 악마'],
+]
+
+// 출제자용 랜덤 힌트 단어 — 이 단어가 스펙트럼 축에서 '어디쯤'인지 지점을 잡는 데 쓴다.
+const HINT_WORDS = [
+  '코끼리', '스타벅스', '지하철', '라면', '김치', '에베레스트', '개미', '다이아몬드', '편의점', '초등학생',
+  '삼겹살', '우주', '모기', '아이폰', '김연아', '로또', '바퀴벌레', '텀블러', '히말라야', '종이컵',
+  '페라리', '붕어빵', '화장지', '고래', '참기름', '인공지능', '손흥민', '소금', '우산', '신라면',
+  '벽돌', '깃털', '태양', '얼음', '라이터', '금괴', '젤리', '헬리콥터', '달팽이', '번지점프',
 ]
 
 // 존 폭 — 적중(안전) 경계 e, 그 안에서 완벽 p / 근접 c
@@ -98,21 +97,9 @@ function HostView({ base, meta, players }) {
   const staged = meta.roundStatus === 'staged'
   const z = zoneOf(zone)
 
-  const [el, setEl] = useState('')
-  const [er, setEr] = useState('')
-  const seeded = useRef(false)
-  useEffect(() => { if (!seeded.current && spec) { setEl(spec.l || ''); setEr(spec.r || ''); seeded.current = true } }, [spec])
-  const writeL = (v) => { setEl(v); dbSet(`${base}/spectrum`, { l: v, r: er }) }
-  const writeR = (v) => { setEr(v); dbSet(`${base}/spectrum`, { l: el, r: v }) }
-  const rollFrom = (arr) => { const [l, r] = arr[Math.floor(Math.random() * arr.length)]; setEl(l); setEr(r); dbSet(`${base}/spectrum`, { l, r }) }
-  // 스펙트럼 자동 뽑기 — 출제자가 손 안 대도 되게, 대기 상태에서 비어 있으면 한 번 자동 채움(트랜잭션=화면 여러 개여도 1회).
-  useEffect(() => {
-    if (!staged || spec !== null) return
-    const [l, r] = SPECTRA[Math.floor(Math.random() * SPECTRA.length)]
-    dbTransaction(`${base}/spectrum`, (cur) => cur || { l, r })
-  }, [staged, spec, base])
-  // 출제자 지목 — 타깃은 이제 출제자가 직접 고른다(랜덤 배정 없음)
-  const pickMaster = (pid) => dbUpdate(base, { masterId: pid, target: null, clue: null, guess: null })
+  // 출제자 선택 — 스펙트럼·지점·힌트는 전부 출제자가 폰에서 정한다(진행자는 누가 낼지만 고름)
+  const pickMaster = (pid) => dbUpdate(base, { masterId: pid, spectrum: null, target: null, clue: null, guess: null })
+  const randomMaster = () => { if (players.length) pickMaster(players[Math.floor(Math.random() * players.length)].id) }
 
   const guesses = toList(guessRaw).filter((g) => typeof g.value === 'number' && g.id !== masterId)
   const scored = useMemo(() => {
@@ -129,34 +116,20 @@ function HostView({ base, meta, players }) {
     <div className="text-center">
       {staged && (
         <div className="mb-4 max-w-lg mx-auto">
-          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>스펙트럼 — 자동으로 뽑혀요 · 바꾸려면 수정하거나 🎲</div>
-          <div className="flex gap-2 items-center">
-            <input value={el} onChange={(e) => writeL(e.target.value)} placeholder="왼쪽 극단" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
-            <span className="font-display" style={{ color: 'var(--ink-soft)' }}>↔</span>
-            <input value={er} onChange={(e) => writeR(e.target.value)} placeholder="오른쪽 극단" className="clay-inset flex-1 min-w-0 px-3 py-2 text-center" />
-          </div>
-          <div className="flex gap-2 justify-center mt-2">
-            <button onClick={() => rollFrom(SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 다시 뽑기</button>
-            {meta.adultEnabled && <button onClick={() => rollFrom(ADULT_SPECTRA)} className="clay-btn px-5 py-2 text-lg font-display" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
-          </div>
-        </div>
-      )}
-
-      {!staged && (
-        <div className="font-display text-2xl">
-          {spec ? <>{spec.l} <span style={{ color: 'var(--ink-soft)' }}>↔</span> {spec.r}</> : <span style={{ color: 'var(--ink-soft)' }}>스펙트럼 미설정</span>}
-        </div>
-      )}
-
-      {staged && spec && (
-        <div className="mt-3">
-          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>출제자 지목 (타깃은 이 사람이 직접 고릅니다)</div>
+          <div className="text-sm mb-2" style={{ color: 'var(--ink-soft)' }}>출제자를 고르세요 · 스펙트럼·지점·힌트는 <b>출제자가 폰에서</b> 직접 정합니다</div>
           <div className="flex flex-wrap justify-center gap-1.5">
             {players.map((p) => (
               <button key={p.id} onClick={() => pickMaster(p.id)} className="clay-btn px-3 py-1.5 text-sm font-display" style={masterId === p.id ? { background: 'var(--c-sky)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{p.nickname}</button>
             ))}
           </div>
-          {masterId && <p className="mt-2 text-sm" style={{ color: 'var(--c-sky)' }}>🎯 {byId[masterId]?.nickname} 님이 폰에서 지점+힌트를 정합니다 · ‘시작’ 누르세요</p>}
+          <button onClick={randomMaster} disabled={!players.length} className="clay-btn mt-2 px-5 py-2 font-display disabled:opacity-40" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 랜덤 출제자</button>
+          {masterId && <p className="mt-2 text-sm" style={{ color: 'var(--c-sky)' }}>🎯 {byId[masterId]?.nickname} 님이 폰에서 스펙트럼·지점·힌트를 정합니다 · ‘시작’을 누르세요</p>}
+        </div>
+      )}
+
+      {!staged && (
+        <div className="font-display text-2xl">
+          {spec ? <>{spec.l} <span style={{ color: 'var(--ink-soft)' }}>↔</span> {spec.r}</> : <span style={{ color: 'var(--ink-soft)' }}>출제자가 스펙트럼 뽑는 중…</span>}
         </div>
       )}
 
@@ -216,29 +189,57 @@ function PlayerView({ base, meta, me }) {
   const reveal = meta.roundStatus === 'reveal'
   const z = zoneOf(zone)
 
-  if (!spec || !masterId) return <p className="text-center py-10" style={{ color: 'var(--ink-soft)' }}>진행자가 준비 중… 🌈</p>
+  if (!masterId) return <p className="text-center py-10" style={{ color: 'var(--ink-soft)' }}>진행자가 출제자를 정하는 중… 🌈</p>
 
-  // ── 출제자: 바에서 타깃 직접 지정 + 힌트 ──
+  const rollSpec = (arr) => { const [l, r] = arr[Math.floor(Math.random() * arr.length)]; dbSet(`${base}/spectrum`, { l, r }) }
+  const rollHint = () => setClueText(HINT_WORDS[Math.floor(Math.random() * HINT_WORDS.length)])
+
+  // ── 출제자: 스펙트럼 뽑기 → 비밀 지점 + 힌트 (전권) ──
   if (masterId === me.id) {
+    // 아직 스펙트럼 없음 → 출제자가 직접 뽑기
+    if (!spec) {
+      return (
+        <div className="text-center py-6">
+          <div className="text-5xl">🎯</div>
+          <p className="font-display text-xl mt-2">당신이 출제자!</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--ink-soft)' }}>스펙트럼을 뽑아 시작하세요</p>
+          <div className="flex gap-2 justify-center mt-4">
+            <button onClick={() => rollSpec(SPECTRA)} className="clay-btn px-5 py-3 text-lg font-display" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲 스펙트럼 뽑기</button>
+            {meta.adultEnabled && <button onClick={() => rollSpec(ADULT_SPECTRA)} className="clay-btn px-5 py-3 text-lg font-display" style={{ background: '#e64545', color: '#fff' }} title="19금 랜덤 🔞">🎲 19</button>}
+          </div>
+        </div>
+      )
+    }
     const shown = target ?? tVal
     return (
       <div className="text-center">
-        <p className="font-display" style={{ color: 'var(--ink-soft)' }}>{spec.l} ↔ {spec.r}</p>
+        <div className="flex items-center justify-center gap-2">
+          <p className="font-display" style={{ color: 'var(--ink-soft)' }}>{spec.l} ↔ {spec.r}</p>
+          <button onClick={() => rollSpec(SPECTRA)} disabled={reveal} className="clay-btn px-2 py-1 text-sm" title="스펙트럼 다시 뽑기" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>🎲</button>
+          {meta.adultEnabled && <button onClick={() => rollSpec(ADULT_SPECTRA)} disabled={reveal} className="clay-btn px-2 py-1 text-sm" title="19금 랜덤" style={{ background: '#e64545', color: '#fff' }}>🔞</button>}
+        </div>
         <p className="text-xs mt-1" style={{ color: 'var(--c-sky)' }}>🤫 이 지점은 당신만 봅니다 · 존 {z.label}(±{z.e})</p>
         <div className="mt-3">
           <SpectrumBar spec={spec} target={shown} zone={zone} showZone />
         </div>
-        <input type="range" min="0" max="100" value={shown} disabled={!open}
+        <input type="range" min="0" max="100" value={shown} disabled={reveal}
           onChange={(e) => { const v = +e.target.value; setTVal(v); dbSet(`${base}/target`, v) }} className="w-full mt-3" />
         <div className="font-display text-4xl">{shown}</div>
         <p className="text-xs" style={{ color: 'var(--ink-soft)' }}>너무 쉬운 데(0·100) 고르면 다 맞혀서 <b>내가</b> 마셔요 🍺</p>
 
-        <input value={clueText} onChange={(e) => setClueText(e.target.value)} disabled={!open} placeholder="이 지점을 단어 하나로 설명!" className="clay-inset w-full mt-3 px-4 py-3 text-center" />
-        <Button className="mt-2 w-full" onClick={() => clueText.trim() && dbSet(`${base}/clue`, clueText.trim())} disabled={!open || !clueText.trim()}>{clue ? '힌트 수정' : '힌트 제출'}</Button>
+        <div className="flex gap-2 mt-3">
+          <input value={clueText} onChange={(e) => setClueText(e.target.value)} disabled={reveal} placeholder="이 지점을 단어 하나로 설명!" className="clay-inset flex-1 min-w-0 px-4 py-3 text-center" />
+          <button onClick={rollHint} disabled={reveal} className="clay-btn px-3 text-xl shrink-0" title="랜덤 단어 뽑기" style={{ background: 'var(--c-grape)', color: '#fff' }}>🎲</button>
+        </div>
+        <Button className="mt-2 w-full" onClick={() => clueText.trim() && dbSet(`${base}/clue`, clueText.trim())} disabled={reveal || !clueText.trim()}>{clue ? '힌트 수정' : '힌트 제출'}</Button>
         {clue && <p className="mt-2 text-sm" style={{ color: 'var(--c-mint)' }}>제출됨: “{clue}”</p>}
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-soft)' }}>💡 🎲로 랜덤 단어를 뽑아, 그 단어가 이 축에서 어디쯤인지 지점을 잡아도 돼요</p>
       </div>
     )
   }
+
+  // ── 추측자: 스펙트럼 준비 전 대기 ──
+  if (!spec) return <p className="text-center py-10" style={{ color: 'var(--ink-soft)' }}>출제자가 스펙트럼을 뽑는 중… 🌈</p>
 
   // ── 추측자: 공개 후 즉시 판정 ──
   if (reveal) {
