@@ -27,7 +27,8 @@ const ADULT = [
 ]
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)]
 
-export default function LobbyQuestions({ roomId, me, adult = false, defaultOpen = true }) {
+// canManage=true(진행자)면 자기 것뿐 아니라 목록의 모든 질문을 삭제할 수 있다.
+export default function LobbyQuestions({ roomId, me, adult = false, defaultOpen = true, canManage = false }) {
   const [open, setOpen] = useState(defaultOpen)
   const [text, setText] = useState('')
   const list = useChildList(roomPath(roomId, 'qpool'))
@@ -78,12 +79,13 @@ export default function LobbyQuestions({ roomId, me, adult = false, defaultOpen 
           <div className="mt-3 space-y-1.5 max-h-72 overflow-y-auto">
             {ordered.map((q) => {
               const mine = q.byId && me?.id && q.byId === me.id
+              const canDelete = mine || canManage
               return (
                 <div key={q.id} className="clay-inset flex items-center gap-2 px-3 py-2">
                   <span className="flex-1 text-sm" style={{ color: 'var(--ink)' }}>{q.text}</span>
                   <span className="text-xs shrink-0" style={{ color: 'var(--ink-soft)' }}>{q.by}</span>
-                  {mine && (
-                    <button onClick={() => removeQuestion(roomId, q.id)} className="text-xs shrink-0" style={{ color: 'var(--c-coral)' }} title="내 질문 삭제">✕</button>
+                  {canDelete && (
+                    <button onClick={() => removeQuestion(roomId, q.id)} className="text-xs shrink-0" style={{ color: 'var(--c-coral)' }} title={mine ? '내 질문 삭제' : '진행자: 질문 삭제'}>✕</button>
                   )}
                 </div>
               )

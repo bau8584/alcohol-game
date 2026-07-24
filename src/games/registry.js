@@ -39,10 +39,29 @@ export const GAMES = [buzzer, tap, timing, chicken, greenlight, pick, herd, eunc
 
 export const gameById = (id) => GAMES.find((g) => g.id === id) || null
 
-// 🔰 입문 추천 — 규칙이 자명하고 즉각적이라 처음 모임에서 바로 굴러가는 게임.
-// 게임 선택 화면에서 배지·필터·상단 정렬에 쓴다.
-export const BEGINNER_IDS = ['tap', 'chicken', 'timing', 'sync', 'eunchi', 'pick']
-export const isBeginner = (id) => BEGINNER_IDS.includes(id)
+// 🎮 상황·목적 카테고리 — 게임 선택 화면을 접이식 묶음으로 보여주기 위한 매핑.
+// 게임 파일은 안 건드리고 여기서만 배치. 어느 묶음에도 없는 게임은 gamesByCategory()가 '기타'로 넣는다.
+export const CATEGORIES = [
+  { key: 'instant', emoji: '⚡', label: '즉석 반응·벌칙', ids: ['buzzer', 'tap', 'timing', 'chicken', 'greenlight', 'eunchi', 'faces', 'roulette', 'king', 'croc'] },
+  { key: 'mind', emoji: '🕵️', label: '심리·정체·추리', ids: ['uniquenum', 'indianpoker', 'spy', 'whodunit', 'oxtruth', 'mbti', 'imagegame', 'werewolf'] },
+  { key: 'vote', emoji: '🗳️', label: '지목·평판', ids: ['pick', 'herd', 'jinseonmi'] },
+  { key: 'telepathy', emoji: '📡', label: '텔레파시·이심전심', ids: ['sync', 'telematch', 'ranksync', 'wavelength', 'themind', 'justone'] },
+  { key: 'express', emoji: '🎭', label: '표현·말·단어', ids: ['charades', 'wordrelay', 'category', 'codenames', 'callmyname'] },
+  { key: 'relation', emoji: '💘', label: '관계·솔직', ids: ['rolling', 'heartsignal'] },
+]
+
+// 카테고리별로 실제 게임 모듈을 묶어 반환. 누락 게임은 '기타'로 자동 포함(사라지지 않게).
+export function gamesByCategory() {
+  const assigned = new Set()
+  const groups = CATEGORIES.map((c) => {
+    const games = c.ids.map((id) => gameById(id)).filter(Boolean)
+    games.forEach((g) => assigned.add(g.id))
+    return { key: c.key, emoji: c.emoji, label: c.label, games }
+  }).filter((c) => c.games.length)
+  const rest = GAMES.filter((g) => !assigned.has(g.id))
+  if (rest.length) groups.push({ key: 'etc', emoji: '🎲', label: '기타', games: rest })
+  return groups
+}
 
 // 태그 분류: 장르(성격) + 속성(형식)
 export const GENRES = [

@@ -3,7 +3,7 @@
 //   "한 단어+숫자" 힌트 → ④활성 팀원이 폰에서 타일 '투표' → 호스트 화면에 득표수만큼 색이 진해짐
 //   → ⑤진행자가 타일을 탭해 '확정 공개'(자기 팀=계속, 중립·상대=턴 넘김, 암살자=즉패).
 // 한 명이 눌러 전체 공개되지 않도록, 실제 공개·턴은 진행자만. 키는 지정된 스파이마스터 폰에만.
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useValue, dbSet, dbUpdate } from '../lib/db'
 import { Button } from '../components/ui'
 
@@ -16,24 +16,49 @@ const WORDS = [
   '반지', '지도', '깃발', '촛불', '거북이', '여우', '늑대', '박쥐', '문어', '공룡',
 ]
 
+// 보드 크기 프리셋 — 시작팀(A)/상대(B)/중립(N)/암살자(X항상 1). 술자리용 축소판.
+const SIZES = {
+  '3x3': { label: '초고속 3×3', tiles: 9, cols: 3, A: 3, B: 2, N: 3, mins: '~3분' },
+  '3x4': { label: '추천 3×4', tiles: 12, cols: 3, A: 4, B: 3, N: 4, mins: '~5분' },
+  '4x4': { label: '4×4', tiles: 16, cols: 4, A: 5, B: 4, N: 6, mins: '~7분' },
+}
+const SIZE_KEYS = ['3x3', '3x4', '4x4']
+const DEFAULT_SIZE = '3x4'
+
 const shuffle = (a) => {
   a = [...a]
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]] }
   return a
 }
-function makeBoard() {
-  const words = shuffle(WORDS).slice(0, 25)
-  const roles = [...Array(9).fill('A'), ...Array(8).fill('B'), ...Array(7).fill('N'), 'X']
-  return { words, key: shuffle(roles) }
+function makeBoard(sizeKey) {
+  const s = SIZES[sizeKey] || SIZES[DEFAULT_SIZE]
+  const words = shuffle(WORDS).slice(0, s.tiles)
+  const roles = [...Array(s.A).fill('A'), ...Array(s.B).fill('B'), ...Array(s.N).fill('N'), 'X']
+  return { words, key: shuffle(roles), cols: s.cols }
 }
 
 function useRemain(key, revealed) {
   return useMemo(() => {
-    if (!key) return { A: 9, B: 8 }
+    if (!key) return { A: 0, B: 0 }
     let A = 0, B = 0
     key.forEach((r, i) => { if (!revealed[i]) { if (r === 'A') A++; if (r === 'B') B++ } })
     return { A, B }
   }, [key, revealed])
+}
+
+// 진행자가 판 시작 전에 고르는 크기 토글
+function SizePicker({ size, setSize }) {
+  return (
+    <div className="flex flex-wrap justify-center gap-2 mb-3">
+      {SIZE_KEYS.map((k) => (
+        <button key={k} onClick={() => setSize(k)}
+          className="clay-btn px-3 py-1.5 text-sm font-display"
+          style={size === k ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>
+          {SIZES[k].label} <span className="opacity-70 text-xs">{SIZES[k].mins}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 /* ───────────────────────── 호스트 ───────────────────────── */
@@ -45,7 +70,9 @@ function HostView({ base, players, teams }) {
   const winner = useValue(`${base}/winner`)
   const spy = useValue(`${base}/spymaster`) || {}
   const votesRaw = useValue(`${base}/votes`) || {}
+  const cols = useValue(`${base}/cols`) || 3
   const remain = useRemain(key, revealed)
+  const [size, setSize] = useState(DEFAULT_SIZE)
 
   const [tA, tB] = teams
   const twoTeams = teams.length >= 2
@@ -55,7 +82,7 @@ function HostView({ base, players, teams }) {
   const colorOf = (role) => role === 'A' ? (tA?.color || 'var(--c-grape)') : role === 'B' ? (tB?.color || 'var(--c-coral)') : role === 'X' ? '#1f2937' : '#c9b896'
 
   const setSpy = (side, pid) => dbUpdate(`${base}/spymaster`, { [side]: pid })
-  const deal = () => dbSet(base, { ...makeBoard(), revealed: null, turn: 'A', winner: null, spymaster: spy, votes: null })
+  const deal = () => dbSet(base, { ...makeBoard(size), revealed: null, turn: 'A', winner: null, spymaster: spy, votes: null })
   const resetAll = () => dbSet(base, null)
 
   if (!twoTeams) {
@@ -88,7 +115,11 @@ function HostView({ base, players, teams }) {
         <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto">
           <Picker side="A" /><Picker side="B" />
         </div>
-        <Button variant="ok" className="mt-4" onClick={deal} disabled={!spy.A || !spy.B}>🃏 이 구성으로 판 시작</Button>
+        <div className="mt-4">
+          <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>보드 크기</div>
+          <SizePicker size={size} setSize={setSize} />
+        </div>
+        <Button variant="ok" onClick={deal} disabled={!spy.A || !spy.B}>🃏 이 구성으로 판 시작</Button>
       </div>
     )
   }
@@ -97,6 +128,7 @@ function HostView({ base, players, teams }) {
   if (!words) {
     return (
       <div className="text-center">
+        <SizePicker size={size} setSize={setSize} />
         <Button variant="ok" onClick={deal}>🃏 판 시작 (단어 배분)</Button>
         <p className="mt-3 text-sm" style={{ color: 'var(--ink-soft)' }}>🔑 {tA?.name}: {nameOf(spy.A)} · {tB?.name}: {nameOf(spy.B)}</p>
         <button onClick={() => dbSet(`${base}/spymaster`, null)} className="mt-2 text-xs underline" style={{ color: 'var(--ink-soft)' }}>스파이마스터 다시 정하기</button>
@@ -136,7 +168,7 @@ function HostView({ base, players, teams }) {
         <span className="font-display" style={{ color: tB?.color }}>{remain.B} {tB?.name}</span>
       </div>
 
-      <div className="grid grid-cols-5 gap-1.5 max-w-2xl mx-auto">
+      <div className="grid gap-1.5 mx-auto" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, maxWidth: cols >= 4 ? '32rem' : '26rem' }}>
         {words.map((w, i) => {
           const on = !!revealed[i]
           const role = key?.[i]
@@ -177,6 +209,7 @@ function PlayerView({ base, players, teams, me }) {
   const winner = useValue(`${base}/winner`)
   const spy = useValue(`${base}/spymaster`) || {}
   const votesRaw = useValue(`${base}/votes`) || {}
+  const cols = useValue(`${base}/cols`) || 3
   const remain = useRemain(key, revealed)
 
   const [tA, tB] = teams
@@ -224,7 +257,7 @@ function PlayerView({ base, players, teams, me }) {
         </div>
       )}
 
-      <div className="grid grid-cols-5 gap-1 max-w-md mx-auto">
+      <div className="grid gap-1.5 mx-auto" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))`, maxWidth: cols >= 4 ? '26rem' : '20rem' }}>
         {words.map((w, i) => {
           const on = !!revealed[i]
           const role = key?.[i]
@@ -240,7 +273,7 @@ function PlayerView({ base, players, teams, me }) {
                 : { background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--surface-2)' }
           return (
             <button key={i} onClick={() => vote(i)} disabled={!myTurn || on}
-              className="relative rounded-md py-2.5 px-0.5 font-bold text-[11px] leading-tight"
+              className="relative rounded-lg py-3.5 px-1 font-bold text-sm leading-tight"
               style={style}>
               {on && role === 'X' ? '💀' : w}
               {!mine && v > 0 && <span className="absolute -top-1 -right-1 text-[9px] rounded-full w-3.5 h-3.5 flex items-center justify-center" style={{ background: teamOf(turn)?.color, color: '#fff' }}>{v}</span>}
@@ -268,7 +301,7 @@ export default {
   id: 'codenames',
   name: '코드네임',
   emoji: '🔑',
-  tagline: '2팀 · 한 단어 힌트로 우리 팀 단어 찾기',
+  tagline: '2팀 · 한 단어 힌트로 우리 팀 단어 찾기 · 3×3/3×4/4×4 스피드판',
   genres: ['brain', 'mind'],
   traits: ['team'],
   controls: { prompt: false, mode: 'self' },

@@ -65,10 +65,6 @@ function HostView({ base, meta, players, teams }) {
   const teamById = useMemo(() => Object.fromEntries(teams.map((t) => [t.id, t])), [teams])
   const tName = (id) => teamById[id]?.name || '?'
 
-  // 진행자가 참가자이기도 하면(폰 1대) 자기 팀 단어는 숨겨서 진행자도 참여 가능하게.
-  const hostP = meta?.hostPlayerId ? players.find((p) => p.id === meta.hostPlayerId) : null
-  const hostTeamId = hostP?.teamId
-
   const [source, setSource] = useState('preset')
   const [category, setCategory] = useState('star')
 
@@ -132,33 +128,42 @@ function HostView({ base, meta, players, teams }) {
     )
   }
 
-  // ── 팀 보드 (호스트는 모든 단어 보임 + 맞힘 체크) ──
+  // ── 팀 보드 — 공용/진행자 화면이라 단어는 결과 전까지 절대 안 띄운다(각 팀이 자기 단어 볼까 봐).
+  const showWords = phase === 'result'
   const board = (
-    <div className="mt-4 grid gap-2 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-      {ids.map((id) => {
-        const order = done[id]
-        const medal = order === 1 ? '🥇' : order === 2 ? '🥈' : order === 3 ? '🥉' : order ? `${order}등` : null
-        const t = teamById[id]
-        // 진행자 본인 팀 단어는 진행 중엔 숨김(진행자도 참여) · 결과 땐 공개
-        const hideWord = hostTeamId && id === hostTeamId && phase !== 'result'
-        return (
-          <div key={id} className="clay-inset p-3 text-left" style={order === 1 ? { outline: '2px solid var(--c-mint)' } : {}}>
-            <div className="flex justify-between items-center">
-              <span className="font-display" style={{ color: t?.color }}>{tName(id)}{hideWord ? ' (내 팀)' : ''}</span>
-              {medal && <span className="font-display">{medal}</span>}
+    <>
+      {!showWords && <p className="text-xs mt-3" style={{ color: 'var(--ink-soft)' }}>🔒 단어는 각자 폰에만 · 이 화면엔 안 띄워요</p>}
+      <div className="mt-2 grid gap-2 max-w-2xl mx-auto" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
+        {ids.map((id) => {
+          const order = done[id]
+          const medal = order === 1 ? '🥇' : order === 2 ? '🥈' : order === 3 ? '🥉' : order ? `${order}등` : null
+          const t = teamById[id]
+          const written = !!tword[id]
+          return (
+            <div key={id} className="clay-inset p-3 text-left" style={order === 1 ? { outline: '2px solid var(--c-mint)' } : {}}>
+              <div className="flex justify-between items-center">
+                <span className="font-display" style={{ color: t?.color }}>{tName(id)}</span>
+                {medal && <span className="font-display">{medal}</span>}
+              </div>
+              <div className="mt-1 font-display text-lg" style={{ color: showWords ? 'var(--c-coral)' : 'var(--ink-soft)' }}>
+                {showWords
+                  ? (tword[id] || '—')
+                  : phase === 'write'
+                    ? (written ? '작성 완료 ✅' : '작성 대기…')
+                    : (order ? '맞힘 ✅' : '🧠 단어 숨김')}
+              </div>
+              {phase === 'play' && (
+                order ? (
+                  <button onClick={() => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; delete cur[id]; return cur })} className="mt-2 text-xs underline" style={{ color: 'var(--ink-soft)' }}>맞힘 취소 ↩</button>
+                ) : (
+                  <button onClick={() => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; if (cur[id] != null) return; cur[id] = Object.keys(cur).length + 1; return cur })} className="clay-btn mt-2 w-full py-1.5 text-sm font-display" style={{ background: 'var(--c-mint)', color: '#fff' }}>✅ 맞힘</button>
+                )
+              )}
             </div>
-            <div className="mt-1 font-display text-xl" style={{ color: 'var(--c-coral)' }}>{hideWord ? '❓ (내 팀 · 숨김)' : (tword[id] || (phase === 'write' ? '작성 대기…' : '—'))}</div>
-            {phase === 'play' && (
-              order ? (
-                <button onClick={() => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; delete cur[id]; return cur })} className="mt-2 text-xs underline" style={{ color: 'var(--ink-soft)' }}>맞힘 취소 ↩</button>
-              ) : (
-                <button onClick={() => dbTransaction(`${base}/done`, (cur) => { cur = cur || {}; if (cur[id] != null) return; cur[id] = Object.keys(cur).length + 1; return cur })} className="clay-btn mt-2 w-full py-1.5 text-sm font-display" style={{ background: 'var(--c-mint)', color: '#fff' }}>✅ 맞힘</button>
-              )
-            )}
-          </div>
-        )
-      })}
-    </div>
+          )
+        })}
+      </div>
+    </>
   )
 
   // ── 작성 대기 (상대팀이 써주기) ──
@@ -285,23 +290,47 @@ function PlayerView({ base, players, teams, me, myTeam }) {
   }
 
   // ── 진행: 우리 팀 단어는 ❓ · 다른 팀 단어는 다 보임(맞히는 데 도와줄 정보) ──
+  const myColor = myTeam?.color || 'var(--c-grape)'
   return (
-    <div className="text-center">
-      <div className="clay p-6" style={{ background: 'var(--surface-2)' }}>
-        <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>우리 팀 이마 단어</div>
-        <div className="font-display text-5xl mt-1">❓</div>
-        <p className="text-sm mt-2" style={{ color: 'var(--ink-soft)' }}>다른 팀에게 예/아니오 물어서 맞혀봐! (우리 팀 단어는 아무도 안 알려줌)</p>
+    <div>
+      {/* 우리 팀 이마 카드 */}
+      <div className="clay p-6 text-center" style={{ background: myColor, color: '#fff' }}>
+        <div className="text-xs opacity-90">🧠 우리 팀 이마 단어</div>
+        <div className="font-display text-6xl mt-1 leading-none">❓</div>
+        <p className="text-sm mt-3 opacity-90">다른 팀에게 예/아니오로 물어서 맞혀요!<br />우리 팀 단어는 아무도 안 알려줘요.</p>
       </div>
 
-      <div className="mt-4 text-left max-w-md mx-auto">
-        <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>🙊 다른 팀 단어 (나만 아는 정보 · 티내지 마세요)</div>
-        <div className="space-y-1.5">
-          {others.map((id) => (
-            <div key={id} className="clay-inset px-3 py-2 flex items-center justify-between">
-              <span className="font-bold" style={{ color: teamById[id]?.color }}>{tName(id)}</span>
-              <span className="font-display" style={{ color: done[id] ? 'var(--ink-soft)' : 'var(--ink)' }}>{done[id] ? '맞힘 ✅' : tword[id] || '…'}</span>
-            </div>
-          ))}
+      {/* 다른 팀 이마 — 나만 보이는 정보 */}
+      <div className="mt-4">
+        <div className="flex items-center gap-2 mb-2 px-1">
+          <span className="text-xl">🙊</span>
+          <div className="min-w-0">
+            <div className="font-display text-sm leading-tight">다른 팀 이마 단어</div>
+            <div className="text-xs" style={{ color: 'var(--ink-soft)' }}>나만 보여요 · 절대 티내지 마세요!</div>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {others.map((id) => {
+            const t = teamById[id]
+            const guessed = !!done[id]
+            return (
+              <div key={id} className="clay flex items-stretch overflow-hidden" style={{ background: 'var(--surface)', opacity: guessed ? 0.55 : 1 }}>
+                <div className="w-2 shrink-0" style={{ background: t?.color }} />
+                <div className="flex-1 flex items-center justify-between gap-2 px-4 py-3">
+                  <div className="text-left min-w-0">
+                    <div className="text-xs font-bold" style={{ color: t?.color }}>{tName(id)}</div>
+                    <div className={`font-display text-2xl truncate ${guessed ? 'line-through' : ''}`} style={{ color: guessed ? 'var(--ink-soft)' : 'var(--ink)' }}>
+                      {tword[id] || '…'}
+                    </div>
+                  </div>
+                  {guessed && (
+                    <span className="clay-inset px-2.5 py-1 text-xs font-bold shrink-0" style={{ color: 'var(--c-mint)' }}>맞힘 ✅</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+          {!others.length && <p className="text-center text-sm py-4" style={{ color: 'var(--ink-soft)' }}>다른 팀이 없어요.</p>}
         </div>
       </div>
     </div>

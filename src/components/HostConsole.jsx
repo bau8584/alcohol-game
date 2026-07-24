@@ -2,13 +2,43 @@
 // 큰 화면(/host)과 '진행자도 참가자' 모드의 진행자 폰(Player의 🖥 진행 탭)에서 함께 쓴다.
 // 게임 로직은 건드리지 않고, 기존 HostView·컨트롤·AwardPanel을 그대로 재사용한다.
 import { useEffect, useState } from 'react'
-import { GAMES, gameById, isBeginner } from '../games/registry'
+import { gameById, gamesByCategory } from '../games/registry'
 import { startGame, setRoundStatus, setPrompt, newRound, endGame, playBase } from '../lib/actions'
 import QpoolPick from './QpoolPick'
 import { howById } from '../games/howto'
 import HowToPlay from './HowToPlay'
 import { Button, Card, PhaseTag, TeamBadge } from './ui'
 import { useDebounced } from '../lib/useDebounced'
+
+// 카테고리 접이식 섹션 (헤더 접기/펴기 + 게임 카드 그리드)
+function CategorySection({ cat, defaultOpen, compact, canStart, onStart, onPreview }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="clay-inset overflow-hidden" style={{ background: 'var(--surface-2)' }}>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center justify-between px-3 py-2.5">
+        <span className="font-display flex items-center gap-2">
+          <span className="text-xl">{cat.emoji}</span>{cat.label}
+          <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>{cat.games.length}</span>
+        </span>
+        <span className="text-sm" style={{ color: 'var(--ink-soft)' }}>{open ? '▲ 접기' : '▼ 펼치기'}</span>
+      </button>
+      {open && (
+        <div className={`grid gap-2 p-2 pt-0 ${compact ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3'}`}>
+          {cat.games.map((g) => (
+            <div key={g.id} className="relative clay-btn p-3 text-left" style={{ background: 'var(--surface)', color: 'var(--ink)' }}>
+              <button onClick={() => onStart(g.id)} disabled={!canStart} className="block w-full text-left disabled:opacity-50 pr-7">
+                <div className="text-2xl">{g.emoji}</div>
+                <div className="font-display text-base mt-0.5">{g.name}</div>
+                <div className="text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>{howById(g.id)?.action || howById(g.id)?.goal || g.tagline}</div>
+              </button>
+              <button onClick={() => onPreview(g.id)} className="absolute bottom-2 right-2 w-6 h-6 rounded-full text-xs flex items-center justify-center" style={{ background: 'var(--surface-2)', color: 'var(--ink-soft)' }} title="규칙 미리보기">❓</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function HostConsole({ roomId, meta, players, teams, compact = false }) {
   const [prompt, setPromptLocal] = useState('')
@@ -39,8 +69,8 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
     : () => newRound(roomId)
 
   if (!game) {
-    // 카테고리 필터 없이 전체를 한 그리드로. 입문 추천만 맨 앞으로 정렬.
-    const ordered = [...GAMES].sort((a, b) => (isBeginner(b.id) ? 1 : 0) - (isBeginner(a.id) ? 1 : 0))
+    // 상황·목적 카테고리 아코디언. 기본은 첫 묶음만 펼침.
+    const categories = gamesByCategory()
     const previewGame = previewId ? gameById(previewId) : null
     return (
       <Card>
@@ -48,24 +78,18 @@ export default function HostConsole({ roomId, meta, players, teams, compact = fa
           <h2 className="font-display text-2xl">🎮 게임 선택</h2>
           <span className="text-sm shrink-0" style={{ color: 'var(--ink-soft)' }}>접속 {players.length}명</span>
         </div>
-        {!compact && <p className="text-sm mb-4" style={{ color: 'var(--ink-soft)' }}>카드의 <b>❓</b>를 누르면 시작 전에 규칙을 볼 수 있어요.</p>}
-        <div className={`grid gap-3 ${compact ? 'grid-cols-2' : 'grid-cols-2 md:grid-cols-3'}`}>
-          {ordered.map((g) => (
-            <div key={g.id} className="relative clay-btn p-4 text-left" style={{ background: 'var(--surface-2)', color: 'var(--ink)' }}>
-              <button onClick={() => startGame(roomId, g.id)} disabled={!players.length} className="block w-full text-left disabled:opacity-50 pr-7">
-                <div className="text-3xl">{g.emoji}</div>
-                <div className="font-display text-lg mt-1">{g.name}</div>
-                <div className="text-xs mt-0.5" style={{ color: 'var(--ink-soft)' }}>{howById(g.id)?.action || howById(g.id)?.goal || g.tagline}</div>
-              </button>
-              <button
-                onClick={() => setPreviewId(g.id)}
-                className="absolute bottom-2 right-2 w-7 h-7 rounded-full text-sm flex items-center justify-center"
-                style={{ background: 'var(--surface)', color: 'var(--ink-soft)' }}
-                title="규칙 미리보기"
-              >
-                ❓
-              </button>
-            </div>
+        {!compact && <p className="text-sm mb-3" style={{ color: 'var(--ink-soft)' }}>카테고리를 눌러 펼치고, 카드의 <b>❓</b>로 규칙 미리보기.</p>}
+        <div className="space-y-2">
+          {categories.map((cat, ci) => (
+            <CategorySection
+              key={cat.key}
+              cat={cat}
+              defaultOpen={ci === 0}
+              compact={compact}
+              canStart={!!players.length}
+              onStart={(id) => startGame(roomId, id)}
+              onPreview={(id) => setPreviewId(id)}
+            />
           ))}
         </div>
 

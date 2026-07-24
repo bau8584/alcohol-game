@@ -27,13 +27,53 @@ function HostView({ base, meta, players, teams }) {
   const guardTeam = teams.find((t) => t.id === guardTeamId)
   const guardMembers = guardTeam?.members || []
   const attackerIds = players.filter((p) => p.teamId && p.teamId !== guardTeamId).map((p) => p.id)
-  const guesserIds = guardMembers.filter((m) => m.id !== targetId).map((m) => m.id)
+  const guesserIds = guardMembers.map((m) => m.id) // 주인공도 자기가 주인공인 줄 모르고 함께 추측
 
   const atk = useMemo(() => tally(atkRaw, attackerIds), [atkRaw, attackerIds])
   const def = useMemo(() => tally(guessRaw, guesserIds), [guessRaw, guesserIds])
   const correct = targetId && def.top === targetId
 
   const pickGuard = (tid) => dbUpdate(base, { guardTeam: tid, target: null, atkVote: null, guess: null })
+
+  // 진행자도 참가자이면(폰 1대) 진행 탭에서 바로 참여. shareResult:false 라 이 화면은 참가자에게 공유 안 됨 → 주인공 노출 안전.
+  const hostId = meta?.hostPlayerId
+  const hostP = hostId ? byId[hostId] : null
+  const hostInGuard = !!hostP && hostP.teamId === guardTeamId
+  const hostIsAtk = !!hostP && !!hostP.teamId && hostP.teamId !== guardTeamId
+  const hostAtk = useValue(hostId ? `${base}/atkVote/${hostId}` : null)
+  const hostGuess = useValue(hostId ? `${base}/guess/${hostId}` : null)
+  const hostPanel = hostP && !reveal && !staged ? (
+    <div className="mt-4 clay-inset p-3 max-w-sm mx-auto">
+      <div className="text-xs mb-1 font-display" style={{ color: 'var(--c-grape)' }}>🎮 진행자도 참여</div>
+      {hostIsAtk ? (
+        !targetId ? (
+          <>
+            <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>주인공 지목 (공격팀 다수결)</div>
+            <div className="grid grid-cols-2 gap-2">
+              {guardMembers.map((m) => (
+                <button key={m.id} onClick={() => dbSet(`${base}/atkVote/${hostId}`, m.id)} className="clay-btn py-2 text-sm font-display" style={hostAtk === m.id ? { background: 'var(--c-coral)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{m.nickname}</button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="font-display">🎯 설명 대상: <b>{byId[targetId]?.nickname}</b> <span className="text-xs" style={{ color: 'var(--ink-soft)' }}>(이름 금지 🤐)</span></div>
+        )
+      ) : hostInGuard ? (
+        !targetId ? (
+          <div className="text-sm" style={{ color: 'var(--ink-soft)' }}>공격팀이 주인공 정하는 중… 잠시만요</div>
+        ) : (
+          <>
+            <div className="text-sm mb-1" style={{ color: 'var(--ink-soft)' }}>우리 팀 중 누가 주인공? (나도 추측)</div>
+            <div className="grid grid-cols-2 gap-2">
+              {guardMembers.filter((m) => m.id !== hostId).map((m) => (
+                <button key={m.id} onClick={() => dbSet(`${base}/guess/${hostId}`, m.id)} className="clay-btn py-2 text-sm font-display" style={hostGuess === m.id ? { background: 'var(--c-grape)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--ink)' }}>{m.nickname}</button>
+              ))}
+            </div>
+          </>
+        )
+      ) : null}
+    </div>
+  ) : null
 
   // ── 설정: 수비팀만 지정 (주인공은 공격팀이 폰에서 정함) ──
   if (staged) {
@@ -89,6 +129,7 @@ function HostView({ base, meta, players, teams }) {
           <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>주인공이 누구인지는 비밀 🤐 · 👁 ‘공개’로 정답·승패 발표</p>
         </div>
       )}
+      {hostPanel}
     </div>
   )
 }
@@ -97,6 +138,7 @@ function PlayerView({ base, meta, players, me, myTeam }) {
   const guardTeamId = useValue(`${base}/guardTeam`)
   const targetId = useValue(`${base}/target`)
   const atkRaw = useValue(`${base}/atkVote`)
+  const guessRaw = useValue(`${base}/guess`)
   const myAtk = useValue(`${base}/atkVote/${me.id}`)
   const myGuess = useValue(`${base}/guess/${me.id}`)
   const open = meta.roundStatus === 'open'
@@ -113,14 +155,19 @@ function PlayerView({ base, meta, players, me, myTeam }) {
   }
 
   const inGuard = myTeam?.id === guardTeamId
-  const amTarget = targetId && me.id === targetId
 
   if (reveal) {
+    const def = tally(guessRaw, guardMembers.map((m) => m.id))
+    const correct = targetId && def.top === targetId
+    const iWin = inGuard === !!correct // 수비팀이고 맞힘 → 승 / 공격팀이고 못맞힘 → 승
     return (
       <div className="text-center py-8">
         <div className="text-5xl">🎯</div>
         <p className="mt-2 font-display text-2xl">주인공은 {byId[targetId]?.nickname}!</p>
-        <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>승패는 메인 화면에서 확인하세요 🖥️</p>
+        <p className="mt-1 text-sm" style={{ color: 'var(--ink-soft)' }}>수비팀 추측: {def.top ? byId[def.top]?.nickname : '없음'}</p>
+        <div className="mt-3 clay inline-block px-6 py-3 font-display text-xl animate-pop" style={{ background: iWin ? 'var(--c-mint)' : 'var(--c-coral)', color: '#fff' }}>
+          {correct ? `✅ 수비팀 승리!` : '💥 공격팀 승리!'} {iWin ? '🎉 우리 승!' : '🍺 우리 패…'}
+        </div>
       </div>
     )
   }
@@ -174,17 +221,7 @@ function PlayerView({ base, meta, players, me, myTeam }) {
       </div>
     )
   }
-  // 주인공 본인
-  if (amTarget) {
-    return (
-      <div className="text-center py-8 clay" style={{ background: 'var(--c-sky)', color: '#fff' }}>
-        <div className="text-5xl">🙊</div>
-        <p className="mt-2 font-display text-2xl">너가 주인공!</p>
-        <p className="mt-1 text-sm opacity-90">조용히, 표정 관리~ 팀원들이 널 맞혀야 해요.</p>
-      </div>
-    )
-  }
-  // 수비팀 추측자 — 다수결 투표
+  // 수비팀 추측자 — 다수결 투표 (주인공도 자기가 주인공인 줄 모르고 함께 추측)
   const candidates = guardMembers.filter((m) => m.id !== me.id)
   return (
     <div className="text-center">
@@ -211,6 +248,7 @@ export default {
   tagline: '팀 히든 추측 · 공격팀이 주인공 지목 · 수비팀 추측',
   genres: ['party', 'mind'],
   traits: ['team'],
+  shareResult: false, // 주인공(비밀)이 HostView에 노출될 수 있어 참가자 공유 화면 비활성 (결과는 PlayerView가 직접 표시)
   HostView,
   PlayerView,
 }

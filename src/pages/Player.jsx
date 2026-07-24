@@ -242,7 +242,7 @@ export default function Player() {
                   <div className="mt-1 text-sm">{iAmHost ? '🖥 진행 탭에서 게임을 고르세요!' : '기다리는 동안 구경하고 질문도 적어봐요 👇'}</div>
                 </div>
                 <GameCatalog defaultOpen />
-                <LobbyQuestions roomId={roomId} me={me} adult={!!meta.adultEnabled} defaultOpen />
+                <LobbyQuestions roomId={roomId} me={me} adult={!!meta.adultEnabled} defaultOpen canManage={iAmHost} />
               </div>
             )}
           </div>
